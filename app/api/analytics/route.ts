@@ -8,17 +8,37 @@ import {
 } from "@/lib/discord-storage"
 import path from "path"
 
+// CORS için izin verilecek kaynak URL
+const allowedOrigin = "https://geogame-api.keremkk.com.tr";
+
+// Yanıtlarda kullanılacak ortak CORS başlıkları
+const corsHeaders = {
+  'Access-Control-Allow-Origin': allowedOrigin,
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+
+// Tarayıcıların gönderdiği pre-flight (OPTIONS) isteklerini işlemek için
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 204, // No Content
+    headers: corsHeaders,
+  });
+}
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { appId, userId, endpoint } = body
 
     if (!appId || !userId) {
-      return NextResponse.json({ error: "appId ve userId gerekli" }, { status: 400 })
+      return NextResponse.json({ error: "appId ve userId gerekli" }, { status: 400, headers: corsHeaders })
     }
 
     if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
-      return NextResponse.json({ error: "Discord yapılandırması eksik" }, { status: 500 })
+      return NextResponse.json({ error: "Discord yapılandırması eksik" }, { status: 500, headers: corsHeaders })
     }
 
     // Discord'dan mevcut veriyi indir
@@ -70,16 +90,16 @@ export async function POST(request: NextRequest) {
     await deleteFile(tempFilePath)
 
     if (!uploadSuccess) {
-      return NextResponse.json({ error: "Discord'a yükleme başarısız" }, { status: 500 })
+      return NextResponse.json({ error: "Discord'a yükleme başarısız" }, { status: 500, headers: corsHeaders })
     }
 
     return NextResponse.json({
       success: true,
       message: "Analitik verisi Discord'a kaydedildi",
-    })
+    }, { headers: corsHeaders })
   } catch (error) {
     console.error("Analytics POST error:", error)
-    return NextResponse.json({ error: "Sunucu hatası" }, { status: 500 })
+    return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders })
   }
 }
 
@@ -90,43 +110,33 @@ export async function GET(request: NextRequest) {
     const timeRange = searchParams.get("timeRange") || "daily"
 
     if (!appId) {
-      return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400 })
+      return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400, headers: corsHeaders })
     }
 
-    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
-      return NextResponse.json({
+    const defaultResponse = {
         uniqueUsers: 0,
         totalRequests: 0,
         dailyData: [],
         weeklyData: [],
         monthlyData: [],
-      })
+    };
+
+    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+      return NextResponse.json(defaultResponse, { headers: corsHeaders });
     }
 
     // Discord'dan veriyi indir
     const downloadedFilePath = await downloadFileFromDiscord(process.env.DISCORD_CHANNEL_ID)
 
     if (!downloadedFilePath) {
-      return NextResponse.json({
-        uniqueUsers: 0,
-        totalRequests: 0,
-        dailyData: [],
-        weeklyData: [],
-        monthlyData: [],
-      })
+      return NextResponse.json(defaultResponse, { headers: corsHeaders });
     }
 
     const analyticsData = await readJsonFile(downloadedFilePath)
     await deleteFile(downloadedFilePath)
 
     if (!analyticsData[appId]) {
-      return NextResponse.json({
-        uniqueUsers: 0,
-        totalRequests: 0,
-        dailyData: [],
-        weeklyData: [],
-        monthlyData: [],
-      })
+      return NextResponse.json(defaultResponse, { headers: corsHeaders });
     }
 
     const appData = analyticsData[appId]
@@ -145,7 +155,7 @@ export async function GET(request: NextRequest) {
       dailyData: timeRange === "daily" ? groupedData : [],
       weeklyData: timeRange === "weekly" ? groupedData : [],
       monthlyData: timeRange === "monthly" ? groupedData : [],
-    })
+    }, { headers: corsHeaders })
   } catch (error) {
     console.error("Analytics GET error:", error)
     return NextResponse.json({
@@ -154,7 +164,7 @@ export async function GET(request: NextRequest) {
       dailyData: [],
       weeklyData: [],
       monthlyData: [],
-    })
+    }, { headers: corsHeaders })
   }
 }
 
@@ -168,11 +178,11 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
     switch (timeRange) {
       case "weekly":
         const weekStart = new Date(date)
-        weekStart.setDate(date.getDate() - date.getDay())
+        weekStart.setUTCDate(date.getUTCDate() - date.getUTCDay())
         key = weekStart.toISOString().split("T")[0]
         break
       case "monthly":
-        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+        key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
         break
       default:
         key = date.toISOString().split("T")[0]
