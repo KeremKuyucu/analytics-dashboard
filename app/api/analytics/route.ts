@@ -1,164 +1,206 @@
-// app/api/analytics/route.ts
-
-import { type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server"
 import {
-  downloadLatestFile,
+  downloadFileFromDiscord,
   uploadFileToDiscord,
-  deleteMessage,
   readJsonFile,
   writeJsonFile,
   deleteFile,
-} from "@/lib/discord-storage";
-import path from "path";
+} from "@/lib/discord-storage"
+import path from "path"
 
-// CORS için izin verilecek kaynak URL'ler
-// Birden fazla domaine izin vermek için array kullanabilirsiniz.
-const allowedOrigins = [
-    "https://geogame.keremkk.com.tr", 
-    "https://geogame-api.keremkk.com.tr"
-    // Gerekirse başka domainler de eklenebilir. localhost testi için: 'http://localhost:3000'
-];
+// CORS için izin verilecek kaynak URL
+const allowedOrigin = "https://geogame-api.keremkk.com.tr";
 
-const corsHeaders = (origin: string | null) => {
-    const headers: Record<string, string> = {
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
-    if (origin && allowedOrigins.includes(origin)) {
-        headers['Access-Control-Allow-Origin'] = origin;
-    }
-    return headers;
+// Yanıtlarda kullanılacak ortak CORS başlıkları
+const corsHeaders = {
+  'Access-Control-Allow-Origin': allowedOrigin,
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 
 // Tarayıcıların gönderdiği pre-flight (OPTIONS) isteklerini işlemek için
 export async function OPTIONS(request: NextRequest) {
-    const requestOrigin = request.headers.get('origin');
-    return new NextResponse(null, {
-        status: 204, // No Content
-        headers: corsHeaders(requestOrigin),
-    });
+  return new NextResponse(null, {
+    status: 204, // No Content
+    headers: corsHeaders,
+  });
 }
 
 
 export async function POST(request: NextRequest) {
-  const requestOrigin = request.headers.get('origin');
   try {
-    const body = await request.json();
-    const { appId, userId } = body;
+    const body = await request.json()
+    const { appId, userId, endpoint } = body
 
     if (!appId || !userId) {
-      return NextResponse.json({ error: "appId ve userId gerekli" }, { status: 400, headers: corsHeaders(requestOrigin) });
+      return NextResponse.json({ error: "appId ve userId gerekli" }, { status: 400, headers: corsHeaders })
     }
 
-    const { DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID, DISCORD_ARCHIVE_CHANNEL_ID } = process.env;
-    if (!DISCORD_BOT_TOKEN || !DISCORD_CHANNEL_ID || !DISCORD_ARCHIVE_CHANNEL_ID) {
-      return NextResponse.json({ error: "Discord yapılandırması eksik" }, { status: 500, headers: corsHeaders(requestOrigin) });
+    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+      return NextResponse.json({ error: "Discord yapılandırması eksik" }, { status: 500, headers: corsHeaders })
     }
 
-    const date = new Date();
-    const currentMonthFilename = `analytics-${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}.json`;
+    // Discord'dan mevcut veriyi indir
+    const downloadedFilePath = await downloadFileFromDiscord(process.env.DISCORD_CHANNEL_ID)
 
-    let analyticsData: any = {};
-    
-    const latestFilePayload = await downloadLatestFile(DISCORD_CHANNEL_ID);
+    let analyticsData: any = {}
 
-    if (latestFilePayload.filePath && latestFilePayload.fileName) {
-      if (latestFilePayload.fileName === currentMonthFilename) {
-        analyticsData = await readJsonFile(latestFilePayload.filePath);
-      } else {
-        console.log(`Yeni ay başladı. ${latestFilePayload.fileName} dosyası arşivleniyor...`);
-        
-        await uploadFileToDiscord(latestFilePayload.filePath, DISCORD_ARCHIVE_CHANNEL_ID);
-        
-        if (latestFilePayload.messageId) {
-            await deleteMessage(DISCORD_CHANNEL_ID, latestFilePayload.messageId);
-        }
-        
-        analyticsData = {};
-      }
-      await deleteFile(latestFilePayload.filePath);
+    if (downloadedFilePath) {
+      // İndirilen dosyayı oku
+      analyticsData = await readJsonFile(downloadedFilePath)
+      // Geçici dosyayı sil
+      await deleteFile(downloadedFilePath)
     }
 
+    // Uygulama verisi yoksa oluştur
     if (!analyticsData[appId]) {
-      analyticsData[appId] = { requests: [] };
+      analyticsData[appId] = {
+        uniqueUsers: [],
+        totalRequests: 0,
+        requests: [],
+      }
     }
-    
-    analyticsData[appId].requests.push({
+
+    // Yeni veriyi ekle
+    const newRequest = {
       userId,
-      timestamp: date.toISOString(),
-    });
-
-    const tempFilePath = path.join("/tmp", currentMonthFilename);
-    await writeJsonFile(tempFilePath, analyticsData);
-
-    // Ana kanaldaki eski mesajı silip yenisini yüklemek yerine, sadece yenisini yüklüyoruz.
-    // `downloadLatestFile` her zaman son mesajı alacağı için bu yöntem çalışır.
-    const uploadSuccess = await uploadFileToDiscord(tempFilePath, DISCORD_CHANNEL_ID);
-    await deleteFile(tempFilePath);
-    
-    if (!uploadSuccess) {
-      return NextResponse.json({ error: "Discord'a yükleme başarısız" }, { status: 500, headers: corsHeaders(requestOrigin) });
+      timestamp: new Date().toISOString(),
+      endpoint: endpoint || "/",
+      userAgent: request.headers.get("user-agent") || "",
+      ip: request.headers.get("x-forwarded-for") || "",
     }
 
-    return NextResponse.json({ success: true }, { headers: corsHeaders(requestOrigin) });
+    // Tekil kullanıcı kontrolü
+    if (!analyticsData[appId].uniqueUsers.includes(userId)) {
+      analyticsData[appId].uniqueUsers.push(userId)
+    }
 
+    analyticsData[appId].totalRequests++
+    analyticsData[appId].requests.push(newRequest)
+
+    // Güncellenmiş veriyi geçici dosyaya yaz
+    const tempFilePath = path.join("/tmp", `analytics-${Date.now()}.json`)
+    await writeJsonFile(tempFilePath, analyticsData)
+
+    // Discord'a yükle
+    const uploadSuccess = await uploadFileToDiscord(tempFilePath, process.env.DISCORD_CHANNEL_ID)
+
+    // Geçici dosyayı sil
+    await deleteFile(tempFilePath)
+
+    if (!uploadSuccess) {
+      return NextResponse.json({ error: "Discord'a yükleme başarısız" }, { status: 500, headers: corsHeaders })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Analitik verisi Discord'a kaydedildi",
+    }, { headers: corsHeaders })
   } catch (error) {
-    console.error("Analytics POST error:", error);
-    return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders(requestOrigin) });
+    console.error("Analytics POST error:", error)
+    return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders })
   }
 }
 
 export async function GET(request: NextRequest) {
-    const requestOrigin = request.headers.get('origin');
-    try {
-        const { searchParams } = new URL(request.url);
-        const appId = searchParams.get("appId");
-        
-        if (!appId) {
-            return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400, headers: corsHeaders(requestOrigin) });
-        }
+  try {
+    const { searchParams } = new URL(request.url)
+    const appId = searchParams.get("appId")
+    const timeRange = searchParams.get("timeRange") || "daily"
 
-        const defaultResponse = { uniqueUsers: 0, totalRequests: 0, requests: [] };
-        
-        const { DISCORD_CHANNEL_ID } = process.env;
-        if (!DISCORD_CHANNEL_ID) {
-            return NextResponse.json(defaultResponse, { headers: corsHeaders(requestOrigin) });
-        }
-
-        const latestFilePayload = await downloadLatestFile(DISCORD_CHANNEL_ID);
-        if (!latestFilePayload.filePath || !latestFilePayload.fileName) {
-            return NextResponse.json(defaultResponse, { headers: corsHeaders(requestOrigin) });
-        }
-
-        const date = new Date();
-        const currentMonthFilename = `analytics-${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}.json`;
-
-        // Eğer ana kanaldaki dosya eski bir aydan kalmışsa (henüz yeni istek gelmemişse) boş data dön.
-        if (latestFilePayload.fileName !== currentMonthFilename) {
-             await deleteFile(latestFilePayload.filePath);
-             return NextResponse.json(defaultResponse, { headers: corsHeaders(requestOrigin) });
-        }
-
-        const analyticsData = await readJsonFile(latestFilePayload.filePath);
-        await deleteFile(latestFilePayload.filePath);
-
-        const appData = analyticsData[appId];
-        if (!appData || !Array.isArray(appData.requests)) {
-            return NextResponse.json(defaultResponse, { headers: corsHeaders(requestOrigin) });
-        }
-        
-        const totalRequests = appData.requests.length;
-        const uniqueUsers = new Set(appData.requests.map((r: any) => r.userId)).size;
-
-        return NextResponse.json({
-            uniqueUsers,
-            totalRequests,
-            requests: appData.requests,
-        }, { headers: corsHeaders(requestOrigin) });
-
-    } catch (error) {
-        console.error("Analytics GET error:", error);
-        return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders(requestOrigin) });
+    if (!appId) {
+      return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400, headers: corsHeaders })
     }
+
+    const defaultResponse = {
+        uniqueUsers: 0,
+        totalRequests: 0,
+        dailyData: [],
+        weeklyData: [],
+        monthlyData: [],
+    };
+
+    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+      return NextResponse.json(defaultResponse, { headers: corsHeaders });
+    }
+
+    // Discord'dan veriyi indir
+    const downloadedFilePath = await downloadFileFromDiscord(process.env.DISCORD_CHANNEL_ID)
+
+    if (!downloadedFilePath) {
+      return NextResponse.json(defaultResponse, { headers: corsHeaders });
+    }
+
+    const analyticsData = await readJsonFile(downloadedFilePath)
+    await deleteFile(downloadedFilePath)
+
+    if (!analyticsData[appId]) {
+      return NextResponse.json(defaultResponse, { headers: corsHeaders });
+    }
+
+    const appData = analyticsData[appId]
+
+    // Güvenli veri kontrolü
+    const uniqueUsers = Array.isArray(appData.uniqueUsers) ? appData.uniqueUsers.length : 0
+    const totalRequests = typeof appData.totalRequests === "number" ? appData.totalRequests : 0
+    const requests = Array.isArray(appData.requests) ? appData.requests : []
+
+    // Zaman aralığına göre grupla
+    const groupedData = groupDataByTimeRange(requests, timeRange)
+
+    return NextResponse.json({
+      uniqueUsers,
+      totalRequests,
+      dailyData: timeRange === "daily" ? groupedData : [],
+      weeklyData: timeRange === "weekly" ? groupedData : [],
+      monthlyData: timeRange === "monthly" ? groupedData : [],
+    }, { headers: corsHeaders })
+  } catch (error) {
+    console.error("Analytics GET error:", error)
+    return NextResponse.json({
+      uniqueUsers: 0,
+      totalRequests: 0,
+      dailyData: [],
+      weeklyData: [],
+      monthlyData: [],
+    }, { headers: corsHeaders })
+  }
+}
+
+function groupDataByTimeRange(requests: any[], timeRange: string) {
+  const grouped: Record<string, { users: Set<string>; requests: number }> = {}
+
+  requests.forEach((request) => {
+    const date = new Date(request.timestamp)
+    let key: string
+
+    switch (timeRange) {
+      case "weekly":
+        const weekStart = new Date(date)
+        weekStart.setUTCDate(date.getUTCDate() - date.getUTCDay())
+        key = weekStart.toISOString().split("T")[0]
+        break
+      case "monthly":
+        key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
+        break
+      default:
+        key = date.toISOString().split("T")[0]
+    }
+
+    if (!grouped[key]) {
+      grouped[key] = { users: new Set(), requests: 0 }
+    }
+
+    grouped[key].users.add(request.userId)
+    grouped[key].requests++
+  })
+
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => ({
+      date: key,
+      users: value.users.size,
+      requests: value.requests,
+    }))
 }

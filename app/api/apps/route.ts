@@ -1,57 +1,55 @@
 import { NextResponse } from "next/server"
-
-const apps = [
-  {
-    id: "geogame",
-    name: "GeoGame",
-    description: "Coğrafya tabanlı oyun uygulaması",
-    status: "active",
-    createdAt: "2024-01-15",
-  },
-  {
-    id: "pikamed",
-    name: "PikaMed",
-    description: "Tıbbi görüntü analiz uygulaması",
-    status: "active",
-    createdAt: "2024-02-20",
-  },
-  {
-    id: "discordstorage",
-    name: "Discord Storage",
-    description: "Discord dosya depolama servisi",
-    status: "active",
-    createdAt: "2024-03-10",
-  },
-]
-
-export async function GET() {
-  return NextResponse.json({ apps })
-}
+import { testDiscordConnection, initializeAnalyticsFile } from "@/lib/discord-storage"
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { name, description } = body
-
-    if (!name) {
-      return NextResponse.json({ error: "Uygulama adı gerekli" }, { status: 400 })
+    // Environment variables'ları kontrol et
+    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+      return NextResponse.json(
+        {
+          error:
+            "DISCORD_BOT_TOKEN ve DISCORD_CHANNEL_ID environment variables gerekli. Lütfen .env dosyanızı kontrol edin.",
+        },
+        { status: 400 },
+      )
     }
 
-    const newApp = {
-      id: name.toLowerCase().replace(/\s+/g, ""),
-      name,
-      description: description || "",
-      status: "active",
-      createdAt: new Date().toISOString().split("T")[0],
+    // Discord bağlantısını test et
+    const connectionTest = await testDiscordConnection()
+
+    if (!connectionTest.success) {
+      return NextResponse.json(
+        {
+          error: connectionTest.message,
+        },
+        { status: 400 },
+      )
     }
 
-    apps.push(newApp)
+    // İlk analytics dosyasını oluştur
+    const initSuccess = await initializeAnalyticsFile()
+
+    if (!initSuccess) {
+      return NextResponse.json(
+        {
+          error: "Analytics dosyası oluşturulamadı",
+        },
+        { status: 500 },
+      )
+    }
 
     return NextResponse.json({
       success: true,
-      app: newApp,
+      message: "Discord storage başarıyla kuruldu",
+      channelName: connectionTest.channelName,
     })
   } catch (error) {
-    return NextResponse.json({ error: "Sunucu hatası" }, { status: 500 })
+    console.error("Discord setup error:", error)
+    return NextResponse.json(
+      {
+        error: "Discord kurulum hatası",
+      },
+      { status: 500 },
+    )
   }
 }
