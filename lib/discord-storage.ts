@@ -8,42 +8,30 @@ import { Readable } from "stream";
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 
-// İndirilecek dosya hakkında daha fazla bilgi döndüren tip
+// --- Ortak Tipler ---
 export interface DiscordFilePayload {
   filePath: string | null;
   messageId: string | null;
   fileName: string | null;
 }
 
-/**
- * Bir kanaldaki en son mesajı ve ekindeki dosyayı indirir.
- * Dosyanın adını ve mesaj ID'sini de döndürür.
- */
+// === ANA ANALİTİK FONKSİYONLARI ===
+
 export async function downloadLatestFile(channelId: string): Promise<DiscordFilePayload> {
   try {
     const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages?limit=1`, {
       headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
     });
-
-    if (!response.ok) {
-      console.error("Discord'dan mesajlar alınamadı:", await response.text());
-      return { filePath: null, messageId: null, fileName: null };
-    }
-
+    if (!response.ok) return { filePath: null, messageId: null, fileName: null };
     const messages = await response.json();
-    if (!messages || messages.length === 0 || !messages[0].attachments || messages[0].attachments.length === 0) {
-      return { filePath: null, messageId: null, fileName: null }; // Kanal boş veya son mesajda ek yok
-    }
+    if (!messages?.[0]?.attachments?.[0]) return { filePath: null, messageId: null, fileName: null };
 
     const attachment = messages[0].attachments[0];
-    const fileUrl = attachment.url;
-    const fileName = attachment.filename;
+    const { url: fileUrl, filename: fileName } = attachment;
     const messageId = messages[0].id;
 
     const fileResponse = await fetch(fileUrl);
-    if (!fileResponse.ok || !fileResponse.body) {
-      return { filePath: null, messageId: null, fileName: null };
-    }
+    if (!fileResponse.ok || !fileResponse.body) return { filePath: null, messageId: null, fileName: null };
 
     const tempDir = "/tmp";
     await fs.mkdir(tempDir, { recursive: true });
@@ -52,8 +40,7 @@ export async function downloadLatestFile(channelId: string): Promise<DiscordFile
     const fileStream = createWriteStream(filePath);
     await new Promise((resolve, reject) => {
       Readable.fromWeb(fileResponse.body as any).pipe(fileStream);
-      fileStream.on("finish", resolve);
-      fileStream.on("error", reject);
+      fileStream.on("finish", resolve).on("error", reject);
     });
 
     return { filePath, messageId, fileName };
@@ -63,9 +50,6 @@ export async function downloadLatestFile(channelId: string): Promise<DiscordFile
   }
 }
 
-/**
- * Belirtilen dosyayı Discord kanalına yükler.
- */
 export async function uploadFileToDiscord(filePath: string, channelId: string): Promise<boolean> {
   try {
     const form = new FormData();
@@ -74,10 +58,7 @@ export async function uploadFileToDiscord(filePath: string, channelId: string): 
 
     const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
       method: "POST",
-      headers: {
-        Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-        ...form.getHeaders(),
-      },
+      headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`, ...form.getHeaders() },
       body: form,
     });
     
@@ -85,7 +66,6 @@ export async function uploadFileToDiscord(filePath: string, channelId: string): 
         console.error("Discord'a yükleme başarısız:", await response.text());
         return false;
     }
-
     return true;
   } catch (error) {
     console.error("Discord'a dosya yükleme hatası:", error);
@@ -93,46 +73,95 @@ export async function uploadFileToDiscord(filePath: string, channelId: string): 
   }
 }
 
-/**
- * Bir Discord kanalından belirli bir mesajı siler.
- */
 export async function deleteMessage(channelId: string, messageId: string): Promise<boolean> {
-    try {
-        const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages/${messageId}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
-        });
-        return response.ok;
-    } catch (error) {
-        console.error('Discord mesajı silme hatası:', error);
-        return false;
-    }
+  try {
+    const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages/${messageId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('Discord mesajı silme hatası:', error);
+    return false;
+  }
 }
 
-/**
- * JSON dosyasını okur.
- */
+// === YARDIMCI DOSYA İŞLEM FONKSİYONLARI ===
+
 export async function readJsonFile(filePath: string): Promise<any> {
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content);
+  const content = await fs.readFile(filePath, 'utf-8');
+  return JSON.parse(content);
 }
 
-/**
- * Veriyi JSON dosyasına yazar.
- */
 export async function writeJsonFile(filePath: string, data: any): Promise<void> {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2));
 }
 
-/**
- * Geçici dosyayı siler.
- */
 export async function deleteFile(filePath: string): Promise<void> {
-    try {
-        await fs.unlink(filePath);
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-            console.error(`Geçici dosya silinemedi: ${filePath}`, error);
-        }
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error(`Geçici dosya silinemedi: ${filePath}`, error);
     }
+  }
+}
+
+
+// === SETUP VE TEST FONKSİYONLARI (YENİDEN EKLENDİ) ===
+
+export async function testDiscordConnection(): Promise<{ success: boolean; message: string; channelName?: string }> {
+  const { DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID } = process.env;
+  if (!DISCORD_BOT_TOKEN || !DISCORD_CHANNEL_ID) {
+    return { success: false, message: "Gerekli environment değişkenleri (TOKEN veya CHANNEL_ID) ayarlanmamış." };
+  }
+
+  try {
+    const response = await fetch(`${DISCORD_API_BASE}/channels/${DISCORD_CHANNEL_ID}`, {
+      headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` },
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        return { success: false, message: `Discord API Hatası: ${errorData.message}` };
+    }
+
+    const channelData = await response.json();
+    return { success: true, message: "Discord bağlantısı başarılı", channelName: channelData.name };
+
+  } catch (error: any) {
+    return { success: false, message: `Beklenmedik hata: ${error.message}` };
+  }
+}
+
+
+export async function initializeAnalyticsFile(): Promise<boolean> {
+  const { DISCORD_CHANNEL_ID } = process.env;
+  if (!DISCORD_CHANNEL_ID) {
+    console.error("Discord channel ID ayarlanmamış.");
+    return false;
+  }
+
+  try {
+    // Aylık sisteme uygun boş veri yapısı
+    const initialData = {
+      geogame: { requests: [] },
+      pikamed: { requests: [] },
+      discordstorage: { requests: [] },
+    };
+    
+    // Aylık sisteme uygun dosya adı
+    const date = new Date();
+    const filename = `analytics-${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}.json`;
+    const tempFilePath = path.join("/tmp", filename);
+    
+    await writeJsonFile(tempFilePath, initialData);
+    const uploadSuccess = await uploadFileToDiscord(tempFilePath, DISCORD_CHANNEL_ID);
+    await deleteFile(tempFilePath);
+
+    return uploadSuccess;
+  } catch (error) {
+    console.error("Analitik dosyası başlatma hatası:", error);
+    return false;
+  }
 }
