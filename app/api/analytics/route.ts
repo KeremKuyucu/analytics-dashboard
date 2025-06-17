@@ -18,6 +18,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+// Arşiv kanalı ID'si
+const ARCHIVE_CHANNEL_ID = "1384527208336588820";
 
 // Tarayıcıların gönderdiği pre-flight (OPTIONS) isteklerini işlemek için
 export async function OPTIONS(request: NextRequest) {
@@ -27,6 +29,88 @@ export async function OPTIONS(request: NextRequest) {
   });
 }
 
+// Ay sonu kontrolü ve arşivleme fonksiyonu
+async function checkAndArchiveMonthlyData(analyticsData: any) {
+  const now = new Date();
+  const currentMonth = now.getUTCMonth();
+  const currentYear = now.getUTCFullYear();
+  
+  // Eğer ay başıysak (ilk 3 gün) önceki ayı arşivle
+  if (now.getUTCDate() <= 3) {
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const lastMonthKey = `${lastMonthYear}-${String(lastMonth + 1).padStart(2, "0")}`;
+    
+    // Önceki aya ait verileri filtrele
+    const monthlyData: any = {};
+    let hasDataToArchive = false;
+    
+    Object.keys(analyticsData).forEach(appId => {
+      const appData = analyticsData[appId];
+      if (!appData.requests || !Array.isArray(appData.requests)) return;
+      
+      // Önceki aya ait istekleri filtrele
+      const monthlyRequests = appData.requests.filter((request: any) => {
+        const requestDate = new Date(request.timestamp);
+        const requestMonth = requestDate.getUTCMonth();
+        const requestYear = requestDate.getUTCFullYear();
+        return requestMonth === lastMonth && requestYear === lastMonthYear;
+      });
+      
+      if (monthlyRequests.length > 0) {
+        hasDataToArchive = true;
+        
+        // Aylık benzersiz kullanıcıları hesapla
+        const monthlyUniqueUsers = [...new Set(monthlyRequests.map((r: any) => r.userId))];
+        
+        monthlyData[appId] = {
+          month: lastMonthKey,
+          uniqueUsers: monthlyUniqueUsers,
+          totalRequests: monthlyRequests.length,
+          requests: monthlyRequests,
+          archivedAt: new Date().toISOString()
+        };
+        
+        // Arşivlenen verileri ana veriden çıkar
+        analyticsData[appId].requests = appData.requests.filter((request: any) => {
+          const requestDate = new Date(request.timestamp);
+          const requestMonth = requestDate.getUTCMonth();
+          const requestYear = requestDate.getUTCFullYear();
+          return !(requestMonth === lastMonth && requestYear === lastMonthYear);
+        });
+        
+        // Benzersiz kullanıcıları güncelle (sadece kalan isteklere göre)
+        const remainingUsers = [...new Set(analyticsData[appId].requests.map((r: any) => r.userId))];
+        analyticsData[appId].uniqueUsers = remainingUsers;
+        analyticsData[appId].totalRequests = analyticsData[appId].requests.length;
+      }
+    });
+    
+    // Eğer arşivlenecek veri varsa, arşiv kanalına gönder
+    if (hasDataToArchive) {
+      try {
+        const archiveFileName = `analytics-archive-${lastMonthKey}.json`;
+        const tempArchiveFilePath = path.join("/tmp", archiveFileName);
+        
+        await writeJsonFile(tempArchiveFilePath, {
+          archivedMonth: lastMonthKey,
+          archivedAt: new Date().toISOString(),
+          data: monthlyData
+        });
+        
+        // Arşiv kanalına yükle
+        await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID, archiveFileName);
+        await deleteFile(tempArchiveFilePath);
+        
+        console.log(`${lastMonthKey} ayı verileri arşivlendi`);
+      } catch (error) {
+        console.error("Arşivleme hatası:", error);
+      }
+    }
+  }
+  
+  return analyticsData;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,6 +137,9 @@ export async function POST(request: NextRequest) {
       await deleteFile(downloadedFilePath)
     }
 
+    // Aylık arşivleme kontrolü yap
+    analyticsData = await checkAndArchiveMonthlyData(analyticsData);
+
     // Uygulama verisi yoksa oluştur
     if (!analyticsData[appId]) {
       analyticsData[appId] = {
@@ -66,9 +153,7 @@ export async function POST(request: NextRequest) {
     const newRequest = {
       userId,
       timestamp: new Date().toISOString(),
-      endpoint: endpoint || "/",
-      userAgent: request.headers.get("user-agent") || "",
-      ip: request.headers.get("x-forwarded-for") || "",
+      endpoint: endpoint || null
     }
 
     // Tekil kullanıcı kontrolü
