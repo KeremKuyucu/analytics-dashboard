@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
       endpoint: endpoint || "/",
       userAgent: request.headers.get("user-agent") || "",
-      ip: request.ip || request.headers.get("x-forwarded-for") || "",
+      ip: request.headers.get("x-forwarded-for") || "",
     }
 
     // Tekil kullanıcı kontrolü
