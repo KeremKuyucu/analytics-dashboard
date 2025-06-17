@@ -152,8 +152,7 @@ export async function POST(request: NextRequest) {
     // Yeni veriyi ekle
     const newRequest = {
       userId,
-      timestamp: new Date().toISOString(),
-      endpoint: endpoint || null
+      timestamp: new Date().toISOString()
     }
 
     // Tekil kullanıcı kontrolü
