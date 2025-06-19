@@ -99,7 +99,7 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
         });
         
         // Arşiv kanalına yükle
-        await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID, archiveFileName);
+        await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID);
         await deleteFile(tempArchiveFilePath);
         
         console.log(`${lastMonthKey} ayı verileri arşivlendi`);
