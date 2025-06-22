@@ -13,12 +13,7 @@ export function Navigation() {
       name: "Dashboard",
       href: "/",
       icon: Home,
-    },
-    {
-      name: "Ayarlar",
-      href: "/settings",
-      icon: Settings,
-    },
+    }
   ]
 
   return (
