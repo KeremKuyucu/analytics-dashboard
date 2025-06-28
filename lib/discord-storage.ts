@@ -235,37 +235,3 @@ export async function sendAnalyticsEmbedToDiscord(
     throw error; // Hatayı yeniden fırlat
   }
 }
-
-// --- Kullanım Örneği (Next.js API Rotası veya Sunucu Ortamı) ---
-// const myBotToken = ; // Ortam değişkeninden token alın
-// const myChannelId = "YOUR_DISCORD_CHANNEL_ID"; // Mesajı göndermek istediğiniz kanalın ID'si
-
-// async function exampleUsage() {
-//   try {
-//     await sendAnalyticsEmbedToDiscord(
-//       myChannelId,
-//       "geogame",
-//       "user_abc_123",
-//       {
-//         event: "level_completed",
-//         level: 5,
-//         score: 1250,
-//         platform: "web",
-//       }
-//     );
-
-//     await sendAnalyticsEmbedToDiscord(
-//       myChannelId,
-//       "my_dashboard_app",
-//       "admin_xyz",
-//       {
-//         action: "report_generated",
-//         report_type: "monthly_summary",
-//       }
-//     );
-//   } catch (error) {
-//     console.error("Örnek kullanım hatası:", error);
-//   }
-// }
-
-// exampleUsage();

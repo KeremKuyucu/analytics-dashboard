@@ -114,6 +114,9 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
 }
 
 export async function POST(request: NextRequest) {
+  const start = Date.now();
+  const durationMs = Date.now() - start;
+  const url = new URL(request.url);
   try {
     const body = await request.json()
     const { appId, userId, endpoint } = body
@@ -153,16 +156,32 @@ export async function POST(request: NextRequest) {
      await sendAnalyticsEmbedToDiscord(
        "1388524868877815888",
        appId,
-       "userId",
+       userId,
        {
-         userAgent: request.headers.get("user-agent") || "",
-         appId: appId,
-         userId: userId,
-         event: endpoint,
-         ip: request.headers.get("x-forwarded-for") || "",
-         level: 5,
-         score: 1250,
-         platform: "web",
+         // Mevcut Alanlar
+          userAgent: request.headers.get("user-agent") || "",
+          appId: appId,
+          userId: userId,
+          event: endpoint,
+          ip: request.headers.get("x-forwarded-for") || "",
+
+          // --- YENİ ÖNERİLER ---
+
+          // Request Detayları
+          method: request.method,
+          path: url.pathname,
+          query: url.search, // Hassas veri riskine karşı kontrol edin
+          referer: request.headers.get("referer") || "",
+
+          // Performans
+          durationMs: durationMs,
+          // statusCode: response.status, // Yanıt objesinden alınmalı
+
+          // Ortam
+          environment: process.env.NODE_ENV || "production",
+          
+          // Dil
+          language: request.headers.get("accept-language")?.split(",")[0] || ""
        }
      );
 
