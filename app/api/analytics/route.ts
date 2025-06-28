@@ -5,6 +5,7 @@ import {
   readJsonFile,
   writeJsonFile,
   deleteFile,
+  sendAnalyticsEmbedToDiscord
 } from "@/lib/discord-storage"
 import path from "path"
 
@@ -149,11 +150,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Yeni veriyi ekle
-    const newRequest = {
-      userId,
-      timestamp: new Date().toISOString()
-    }
+     await sendAnalyticsEmbedToDiscord(
+       "1388524868877815888",
+       appId,
+       "userId",
+       {
+         userAgent: request.headers.get("user-agent") || "",
+         appId: appId,
+         userId: userId,
+         event: endpoint,
+         ip: request.headers.get("x-forwarded-for") || "",
+         level: 5,
+         score: 1250,
+         platform: "web",
+       }
+     );
 
     // Tekil kullanıcı kontrolü
     if (!analyticsData[appId].uniqueUsers.includes(userId)) {
@@ -161,7 +172,6 @@ export async function POST(request: NextRequest) {
     }
 
     analyticsData[appId].totalRequests++
-    analyticsData[appId].requests.push(newRequest)
 
     // Güncellenmiş veriyi geçici dosyaya yaz
     const tempFilePath = path.join("/tmp", `analytics-${Date.now()}.json`)

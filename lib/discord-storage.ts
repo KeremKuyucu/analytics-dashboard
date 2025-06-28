@@ -143,35 +143,6 @@ export async function deleteFile(filePath: string): Promise<void> {
   }
 }
 
-// Discord bağlantısını test et
-export async function testDiscordConnection(): Promise<{ success: boolean; message: string; channelName?: string }> {
-  if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
-    return {
-      success: false,
-      message: "DISCORD_BOT_TOKEN veya DISCORD_CHANNEL_ID çevre değişkenleri tanımlanmamış",
-    }
-  }
-
-  try {
-    const response = await axios.get(`https://discord.com/api/v10/channels/${process.env.DISCORD_CHANNEL_ID}`, {
-      headers: {
-        Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-      },
-    })
-
-    return {
-      success: true,
-      message: "Discord bağlantısı başarılı",
-      channelName: response.data.name,
-    }
-  } catch (error: any) {
-    return {
-      success: false,
-      message: `Discord bağlantı hatası: ${error.response?.data?.message || error.message}`,
-    }
-  }
-}
-
 // İlk kurulum için boş analytics dosyası oluştur
 export async function initializeAnalyticsFile(): Promise<boolean> {
   if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
@@ -198,3 +169,103 @@ export async function initializeAnalyticsFile(): Promise<boolean> {
     return false
   }
 }
+
+async function sendAnalyticsEmbedToDiscord(
+  channelId,
+  appId,
+  userId,
+  metadata
+) {
+  try {
+    // Mesajın içeriğini oluşturalım
+    const embed = {
+      title: `Yeni Analitik Logu - Uygulama: ${appId}`, // Embed başlığı
+      description: `Uygulama: **${appId}**\nKullanıcı ID: \`${userId}\``, // Açıklama
+      color: 0x3498db, // Mavi renk (onaltılık)
+      timestamp: new Date().toISOString(), // Mesajın gönderildiği zaman damgası
+      fields: [], // Ek alanlar için boş dizi
+      footer: {
+        text: `Tarih: ${new Date().toLocaleDateString('tr-TR')}`,
+      },
+    };
+
+    // Metadata'yı embed alanlarına ekleyelim
+    if (metadata && Object.keys(metadata).length > 0) {
+      embed.fields.push({
+        name: "Metadata",
+        value: "---",
+        inline: false, // Genişlik boyunca uzansın
+      });
+      for (const key in metadata) {
+        if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+          embed.fields.push({
+            name: key,
+            value: String(metadata[key]), // Tüm değerleri string'e çevir
+            inline: true, // Yan yana dizilebilir
+          });
+        }
+      }
+    }
+
+    // Gönderilecek payload (Discord API formatı)
+    const payload = {
+      embeds: [embed], // Bir veya daha fazla embed içerebilir
+    };
+
+    // Discord API'sine POST isteği gönder
+    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`, // Bot token'ı ile yetkilendirme
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Discord API hatası:", response.status, errorData);
+      throw new Error(`Discord API isteği başarısız oldu: ${response.status} - ${errorData.message || JSON.stringify(errorData)}`);
+    }
+
+    console.log("Embed mesaj başarıyla gönderildi!");
+    return await response.json(); // API yanıtını döndür
+  } catch (error) {
+    console.error("Mesaj gönderme fonksiyonunda hata oluştu:", error);
+    throw error; // Hatayı yeniden fırlat
+  }
+}
+
+// --- Kullanım Örneği (Next.js API Rotası veya Sunucu Ortamı) ---
+// const myBotToken = ; // Ortam değişkeninden token alın
+// const myChannelId = "YOUR_DISCORD_CHANNEL_ID"; // Mesajı göndermek istediğiniz kanalın ID'si
+
+// async function exampleUsage() {
+//   try {
+//     await sendAnalyticsEmbedToDiscord(
+//       myChannelId,
+//       "geogame",
+//       "user_abc_123",
+//       {
+//         event: "level_completed",
+//         level: 5,
+//         score: 1250,
+//         platform: "web",
+//       }
+//     );
+
+//     await sendAnalyticsEmbedToDiscord(
+//       myChannelId,
+//       "my_dashboard_app",
+//       "admin_xyz",
+//       {
+//         action: "report_generated",
+//         report_type: "monthly_summary",
+//       }
+//     );
+//   } catch (error) {
+//     console.error("Örnek kullanım hatası:", error);
+//   }
+// }
+
+// exampleUsage();

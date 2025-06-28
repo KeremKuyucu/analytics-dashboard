@@ -69,7 +69,7 @@ export default DiscordAnalyticsClient
 import DiscordAnalyticsClient from './lib/discord-client'
 
 const analytics = new DiscordAnalyticsClient({
-  apiUrl: 'https://your-analytics-site.vercel.app',
+  apiUrl: 'https://analytics.keremkk.com.tr/',
   appId: 'geogame'
 })
 
