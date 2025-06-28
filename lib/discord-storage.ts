@@ -170,7 +170,7 @@ export async function initializeAnalyticsFile(): Promise<boolean> {
   }
 }
 
-async function sendAnalyticsEmbedToDiscord(
+export async function sendAnalyticsEmbedToDiscord(
   channelId,
   appId,
   userId,
