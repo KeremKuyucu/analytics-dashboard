@@ -154,35 +154,9 @@ export async function POST(request: NextRequest) {
     }
 
      await sendAnalyticsEmbedToDiscord(
-       "1388524868877815888",
+       "1388586990810959913",
        appId,
        userId,
-       {
-         // Mevcut Alanlar
-          userAgent: request.headers.get("user-agent") || "",
-          appId: appId,
-          userId: userId,
-          event: endpoint,
-          ip: request.headers.get("x-forwarded-for") || "",
-
-          // --- YENİ ÖNERİLER ---
-
-          // Request Detayları
-          method: request.method,
-          path: url.pathname,
-          query: url.search, // Hassas veri riskine karşı kontrol edin
-          referer: request.headers.get("referer") || "",
-
-          // Performans
-          durationMs: durationMs,
-          // statusCode: response.status, // Yanıt objesinden alınmalı
-
-          // Ortam
-          environment: process.env.NODE_ENV || "production",
-          
-          // Dil
-          language: request.headers.get("accept-language")?.split(",")[0] || ""
-       }
      );
 
     // Tekil kullanıcı kontrolü

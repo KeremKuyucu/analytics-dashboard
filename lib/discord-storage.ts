@@ -173,8 +173,7 @@ export async function initializeAnalyticsFile(): Promise<boolean> {
 export async function sendAnalyticsEmbedToDiscord(
   channelId,
   appId,
-  userId,
-  metadata
+  userId
 ) {
   try {
     // Mesajın içeriğini oluşturalım
@@ -189,25 +188,6 @@ export async function sendAnalyticsEmbedToDiscord(
       },
     };
 
-    // Metadata'yı embed alanlarına ekleyelim
-    if (metadata && Object.keys(metadata).length > 0) {
-      embed.fields.push({
-        name: "Metadata",
-        value: "---",
-        inline: false, // Genişlik boyunca uzansın
-      });
-      for (const key in metadata) {
-        if (Object.prototype.hasOwnProperty.call(metadata, key)) {
-          embed.fields.push({
-            name: key,
-            value: String(metadata[key]), // Tüm değerleri string'e çevir
-            inline: true, // Yan yana dizilebilir
-          });
-        }
-      }
-    }
-
-    // Gönderilecek payload (Discord API formatı)
     const payload = {
       embeds: [embed], // Bir veya daha fazla embed içerebilir
     };
