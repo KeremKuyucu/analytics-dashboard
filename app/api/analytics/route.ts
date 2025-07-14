@@ -115,8 +115,6 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
 
 export async function POST(request: NextRequest) {
   const start = Date.now();
-  const durationMs = Date.now() - start;
-  const url = new URL(request.url);
   try {
     const body = await request.json()
     const { appId, userId, endpoint } = body
@@ -163,6 +161,12 @@ export async function POST(request: NextRequest) {
     if (!analyticsData[appId].uniqueUsers.includes(userId)) {
       analyticsData[appId].uniqueUsers.push(userId)
     }
+
+    analyticsData[appId].requests.push({
+      userId,
+      endpoint: endpoint || 'unknown',
+      timestamp: new Date().toISOString(),
+    });
 
     analyticsData[appId].totalRequests++
 
