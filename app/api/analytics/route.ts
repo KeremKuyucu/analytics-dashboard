@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
 
     analyticsData[appId].requests.push({
       userId,
-      endpoint: endpoint || 'unknown',
+      //endpoint: endpoint || 'unknown',
       timestamp: new Date().toISOString(),
     });
 
