@@ -114,7 +114,6 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
 }
 
 export async function POST(request: NextRequest) {
-  const start = Date.now();
   try {
     const body = await request.json()
     const { appId, userId, endpoint } = body
