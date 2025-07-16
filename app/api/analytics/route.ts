@@ -9,25 +9,37 @@ import {
 } from "@/lib/discord-storage"
 import path from "path"
 
-// CORS için izin verilecek kaynak URL
-const allowedOrigin = "https://geogame-api.keremkk.com.tr";
-
-// Yanıtlarda kullanılacak ortak CORS başlıkları
-const corsHeaders = {
-  'Access-Control-Allow-Origin': allowedOrigin,
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
-
 // Arşiv kanalı ID'si
 const ARCHIVE_CHANNEL_ID = "1384527208336588820";
 
-// Tarayıcıların gönderdiği pre-flight (OPTIONS) isteklerini işlemek için
+
+const allowedOrigins = [
+  'https://geogame-api.keremkk.com.tr',
+  'https://kisalink.icu/',
+];
+
+const getCorsHeaders = (origin: string | null) => {
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Origin': allowedOrigins[0] 
+  };
+
+  if (origin && allowedOrigins.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
+};
+
 export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, {
-    status: 204, // No Content
-    headers: corsHeaders,
-  });
+  const origin = request.headers.get('origin');
+  const headers = getCorsHeaders(origin);
+
+  return new NextResponse(null, {
+    status: 204, // No Content
+    headers: headers,
+  });
 }
 
 // Ay sonu kontrolü ve arşivleme fonksiyonu
