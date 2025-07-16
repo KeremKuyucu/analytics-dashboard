@@ -22,7 +22,7 @@ const getCorsHeaders = (origin: string | null) => {
   const headers = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Origin': allowedOrigins[0] 
+    'Access-Control-Allow-Origin':   'https://geogame-api.keremkk.com.tr, https://kisalink.icu/',
   };
 
   if (origin && allowedOrigins.includes(origin)) {
