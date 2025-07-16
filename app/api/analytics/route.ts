@@ -12,7 +12,7 @@ import path from "path"
 const corsHeaders = {
 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Origin':   'https://geogame-api.keremkk.com.tr, https://kisalink.icu/',
+    'Access-Control-Allow-Origin':   'https://geogame-api.keremkk.com.tr, https://kisalink.icu',
 };
 
 const ARCHIVE_CHANNEL_ID = "1384527208336588820";
