@@ -9,18 +9,35 @@ import {
 } from "@/lib/discord-storage"
 import path from "path"
 
-const corsHeaders = {
-'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Origin':   'https://geogame-api.keremkk.com.tr, https://kisalink.icu',
-};
-
 const ARCHIVE_CHANNEL_ID = "1384527208336588820";
 
+
+const allowedOrigins = [
+  'https://geogame-api.keremkk.com.tr',
+  'https://kisalink.icu'
+];
+
+// Temel CORS başlıkları
+const corsHeaders = {
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
 export async function OPTIONS(request: NextRequest) {
+  // Gelen isteğin Origin başlığını alın
+  const origin = request.headers.get('origin');
+
+  // Yanıt başlıklarını kopyalayın
+  const headers = { ...corsHeaders };
+  
+  // Eğer origin izin verilenler listesindeyse, Access-Control-Allow-Origin başlığını ekleyin
+  if (origin && allowedOrigins.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin; // ✅ DOĞRU
+  }
+
   return new NextResponse(null, {
     status: 204, // No Content
-    headers: corsHeaders,
+    headers: headers,
   });
 }
 /**
