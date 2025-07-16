@@ -126,6 +126,8 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
 }
 
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
   try {
     const body = await request.json()
     const { appId, userId, endpoint } = body
@@ -206,6 +208,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
   try {
     const { searchParams } = new URL(request.url)
     const appId = searchParams.get("appId")
