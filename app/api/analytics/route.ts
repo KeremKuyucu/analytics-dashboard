@@ -9,40 +9,25 @@ import {
 } from "@/lib/discord-storage"
 import path from "path"
 
-// Arşiv kanalı ID'si
-const ARCHIVE_CHANNEL_ID = "1384527208336588820";
-
-
-const allowedOrigins = [
-  'https://geogame-api.keremkk.com.tr',
-  'https://kisalink.icu/',
-];
-
-const getCorsHeaders = (origin: string | null) => {
-  const headers = {
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+const corsHeaders = {
+'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Origin':   'https://geogame-api.keremkk.com.tr, https://kisalink.icu/',
-  };
-
-  if (origin && allowedOrigins.includes(origin)) {
-    headers['Access-Control-Allow-Origin'] = origin;
-  }
-
-  return headers;
 };
 
+const ARCHIVE_CHANNEL_ID = "1384527208336588820";
+
 export async function OPTIONS(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const headers = getCorsHeaders(origin);
-
-  return new NextResponse(null, {
-    status: 204, // No Content
-    headers: headers,
-  });
+  return new NextResponse(null, {
+    status: 204, // No Content
+    headers: corsHeaders,
+  });
 }
-
-// Ay sonu kontrolü ve arşivleme fonksiyonu
+/**
+ * Aylık verileri kontrol eder ve gerekiyorsa arşivler.
+ * @param {Object} analyticsData - Analitik verileri.
+ * @returns {Object} Güncellenmiş analitik verileri.
+ */
 async function checkAndArchiveMonthlyData(analyticsData: any) {
   const now = new Date();
   const currentMonth = now.getUTCMonth();
@@ -126,8 +111,6 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
 }
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const corsHeaders = getCorsHeaders(origin);
   try {
     const body = await request.json()
     const { appId, userId, endpoint } = body
@@ -208,8 +191,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const corsHeaders = getCorsHeaders(origin);
   try {
     const { searchParams } = new URL(request.url)
     const appId = searchParams.get("appId")
