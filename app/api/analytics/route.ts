@@ -11,7 +11,6 @@ import path from "path"
 
 const ARCHIVE_CHANNEL_ID = "1384527208336588820";
 
-
 const allowedOrigins = [
   'https://geogame-api.keremkk.com.tr',
   'https://kisalink.icu'
@@ -40,6 +39,17 @@ export async function OPTIONS(request: NextRequest) {
     headers: headers,
   });
 }
+
+/**
+ * Son arşivleme tarihini kontrol eder
+ */
+async function getLastArchiveDate(analyticsData: any): Promise<Date | null> {
+  if (analyticsData.lastArchiveCheck) {
+    return new Date(analyticsData.lastArchiveCheck);
+  }
+  return null;
+}
+
 /**
  * Aylık verileri kontrol eder ve gerekiyorsa arşivler.
  * @param {Object} analyticsData - Analitik verileri.
@@ -50,77 +60,94 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
   const currentMonth = now.getUTCMonth();
   const currentYear = now.getUTCFullYear();
   
-  // Eğer ay başıysak (ilk 3 gün) önceki ayı arşivle
-  if (now.getUTCDate() <= 3) {
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    const lastMonthKey = `${lastMonthYear}-${String(lastMonth + 1).padStart(2, "0")}`;
+  // Son arşivleme tarihini kontrol et
+  const lastArchiveDate = await getLastArchiveDate(analyticsData);
+  
+  // Eğer bu ay zaten arşivleme kontrolü yapıldıysa, tekrar yapma
+  if (lastArchiveDate) {
+    const lastArchiveMonth = lastArchiveDate.getUTCMonth();
+    const lastArchiveYear = lastArchiveDate.getUTCFullYear();
     
-    // Önceki aya ait verileri filtrele
-    const monthlyData: any = {};
-    let hasDataToArchive = false;
+    if (lastArchiveMonth === currentMonth && lastArchiveYear === currentYear) {
+      return analyticsData;
+    }
+  }
+  
+  // Önceki ayı hesapla
+  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+  const lastMonthKey = `${lastMonthYear}-${String(lastMonth + 1).padStart(2, "0")}`;
+  
+  // Önceki aya ait verileri filtrele
+  const monthlyData: any = {};
+  let hasDataToArchive = false;
+  
+  Object.keys(analyticsData).forEach(appId => {
+    // Sistem verilerini atla
+    if (appId === 'lastArchiveCheck') return;
     
-    Object.keys(analyticsData).forEach(appId => {
-      const appData = analyticsData[appId];
-      if (!appData.requests || !Array.isArray(appData.requests)) return;
+    const appData = analyticsData[appId];
+    if (!appData.requests || !Array.isArray(appData.requests)) return;
+    
+    // Önceki aya ait istekleri filtrele
+    const monthlyRequests = appData.requests.filter((request: any) => {
+      const requestDate = new Date(request.timestamp);
+      const requestMonth = requestDate.getUTCMonth();
+      const requestYear = requestDate.getUTCFullYear();
+      return requestMonth === lastMonth && requestYear === lastMonthYear;
+    });
+    
+    if (monthlyRequests.length > 0) {
+      hasDataToArchive = true;
       
-      // Önceki aya ait istekleri filtrele
-      const monthlyRequests = appData.requests.filter((request: any) => {
+      // Aylık benzersiz kullanıcıları hesapla
+      const monthlyUniqueUsers = [...new Set(monthlyRequests.map((r: any) => r.userId))];
+      
+      monthlyData[appId] = {
+        month: lastMonthKey,
+        uniqueUsers: monthlyUniqueUsers,
+        totalRequests: monthlyRequests.length,
+        requests: monthlyRequests,
+        archivedAt: new Date().toISOString()
+      };
+      
+      // Arşivlenen verileri ana veriden çıkar
+      analyticsData[appId].requests = appData.requests.filter((request: any) => {
         const requestDate = new Date(request.timestamp);
         const requestMonth = requestDate.getUTCMonth();
         const requestYear = requestDate.getUTCFullYear();
-        return requestMonth === lastMonth && requestYear === lastMonthYear;
+        return !(requestMonth === lastMonth && requestYear === lastMonthYear);
       });
       
-      if (monthlyRequests.length > 0) {
-        hasDataToArchive = true;
-        
-        // Aylık benzersiz kullanıcıları hesapla
-        const monthlyUniqueUsers = [...new Set(monthlyRequests.map((r: any) => r.userId))];
-        
-        monthlyData[appId] = {
-          month: lastMonthKey,
-          uniqueUsers: monthlyUniqueUsers,
-          totalRequests: monthlyRequests.length,
-          requests: monthlyRequests,
-          archivedAt: new Date().toISOString()
-        };
-        
-        // Arşivlenen verileri ana veriden çıkar
-        analyticsData[appId].requests = appData.requests.filter((request: any) => {
-          const requestDate = new Date(request.timestamp);
-          const requestMonth = requestDate.getUTCMonth();
-          const requestYear = requestDate.getUTCFullYear();
-          return !(requestMonth === lastMonth && requestYear === lastMonthYear);
-        });
-        
-        // Benzersiz kullanıcıları güncelle (sadece kalan isteklere göre)
-        const remainingUsers = [...new Set(analyticsData[appId].requests.map((r: any) => r.userId))];
-        analyticsData[appId].uniqueUsers = remainingUsers;
-        analyticsData[appId].totalRequests = analyticsData[appId].requests.length;
-      }
-    });
-    
-    // Eğer arşivlenecek veri varsa, arşiv kanalına gönder
-    if (hasDataToArchive) {
-      try {
-        const archiveFileName = `analytics-archive-${lastMonthKey}.json`;
-        const tempArchiveFilePath = path.join("/tmp", archiveFileName);
-        
-        await writeJsonFile(tempArchiveFilePath, {
-          archivedMonth: lastMonthKey,
-          archivedAt: new Date().toISOString(),
-          data: monthlyData
-        });
-        
-        // Arşiv kanalına yükle
-        await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID);
-        await deleteFile(tempArchiveFilePath);
-        
-        console.log(`${lastMonthKey} ayı verileri arşivlendi`);
-      } catch (error) {
-        console.error("Arşivleme hatası:", error);
-      }
+      // Benzersiz kullanıcıları güncelle (sadece kalan isteklere göre)
+      const remainingUsers = [...new Set(analyticsData[appId].requests.map((r: any) => r.userId))];
+      analyticsData[appId].uniqueUsers = remainingUsers;
+      analyticsData[appId].totalRequests = analyticsData[appId].requests.length;
+    }
+  });
+  
+  // Son arşivleme tarihini güncelle (veri olsun olmasın)
+  analyticsData.lastArchiveCheck = new Date().toISOString();
+  
+  // Eğer arşivlenecek veri varsa, arşiv kanalına gönder
+  if (hasDataToArchive) {
+    try {
+      const archiveFileName = `analytics-archive-${lastMonthKey}.json`;
+      const tempArchiveFilePath = path.join("/tmp", archiveFileName);
+      
+      await writeJsonFile(tempArchiveFilePath, {
+        archivedMonth: lastMonthKey,
+        archivedAt: new Date().toISOString(),
+        data: monthlyData
+      });
+      
+      // Arşiv kanalına yükle
+      await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID);
+      await deleteFile(tempArchiveFilePath);
+      
+      console.log(`${lastMonthKey} ayı verileri arşivlendi`);
+    } catch (error) {
+      console.error("Arşivleme hatası:", error);
     }
   }
   
@@ -281,8 +308,12 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
 
     switch (timeRange) {
       case "weekly":
+        // Pazartesi'yi hafta başı olarak al (ISO 8601 standardı)
         const weekStart = new Date(date)
-        weekStart.setUTCDate(date.getUTCDate() - date.getUTCDay())
+        const dayOfWeek = date.getUTCDay() // 0=Pazar, 1=Pazartesi
+        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // Pazartesi'ye kadar geri git
+        weekStart.setUTCDate(date.getUTCDate() - daysToSubtract)
+        weekStart.setUTCHours(0, 0, 0, 0)
         key = weekStart.toISOString().split("T")[0]
         break
       case "monthly":
