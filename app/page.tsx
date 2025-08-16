@@ -19,7 +19,7 @@ interface AnalyticsData {
 const apps = [
   { id: "geogame", name: "GeoGame", color: "bg-blue-500" },
   { id: "pikamed", name: "PikaMed", color: "bg-green-500" },
-  { id: "discordstorage", name: "Discord Storage", color: "bg-purple-500" },
+  { id: "discordstorage", name: "DiscordStorage", color: "bg-purple-500" },
   { id: "kisalink", name: "kısaLink", color: "bg-red-500" },
 ]
 
