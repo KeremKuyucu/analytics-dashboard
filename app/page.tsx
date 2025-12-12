@@ -1,20 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts"
-import { Activity, Users, Globe, Calendar, TrendingUp } from "lucide-react"
-
-interface AnalyticsData {
-  uniqueUsers: number
-  totalRequests: number
-  dailyData: Array<{ date: string; users: number; requests: number }>
-  weeklyData: Array<{ week: string; users: number; requests: number }>
-  monthlyData: Array<{ month: string; users: number; requests: number }>
-}
+import { Activity, Users, Globe, Calendar, TrendingUp, AlertCircle } from "lucide-react"
+import { useAnalytics } from "@/hooks/use-analytics"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const apps = [
   { id: "geogame", name: "GeoGame", color: "bg-blue-500" },
@@ -26,34 +21,11 @@ const apps = [
 export default function AnalyticsDashboard() {
   const [selectedApp, setSelectedApp] = useState("geogame")
   const [timeRange, setTimeRange] = useState("daily")
-  const [data, setData] = useState<AnalyticsData>({
-    uniqueUsers: 0,
-    totalRequests: 0,
-    dailyData: [],
-    weeklyData: [],
-    monthlyData: [],
-  })
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch(`/api/analytics?appId=${selectedApp}&timeRange=${timeRange}`)
-        const apiData = await response.json()
-
-        if (response.ok) {
-          setData(apiData)
-        } else {
-          console.error("API error:", apiData.error)
-        }
-      } catch (error) {
-        console.error("Fetch error:", error)
-      }
-    }
-
-    fetchData()
-  }, [selectedApp, timeRange])
+  const { data, error, isLoading } = useAnalytics(selectedApp, timeRange);
 
   const getChartData = () => {
+    if (!data) return [];
     switch (timeRange) {
       case "weekly":
         return data.weeklyData || []
@@ -76,6 +48,20 @@ export default function AnalyticsDashboard() {
   }
 
   const selectedAppData = apps.find((app) => app.id === selectedApp)
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Hata</AlertTitle>
+          <AlertDescription>
+            Veriler yüklenirken bir hata oluştu: {error.message}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -125,10 +111,16 @@ export default function AnalyticsDashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {isNaN(data.uniqueUsers) ? 0 : data.uniqueUsers.toLocaleString()}
-              </div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {data?.uniqueUsers ? data.uniqueUsers.toLocaleString() : 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Bu ay</p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -138,10 +130,16 @@ export default function AnalyticsDashboard() {
               <Globe className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {isNaN(data.totalRequests) ? 0 : data.totalRequests.toLocaleString()}
-              </div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {data?.totalRequests ? data.totalRequests.toLocaleString() : 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Bu ay</p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -151,13 +149,19 @@ export default function AnalyticsDashboard() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {(() => {
-                  const avg = data.uniqueUsers > 0 ? Math.round(data.totalRequests / data.uniqueUsers) : 0
-                  return isNaN(avg) ? 0 : avg
-                })()}
-              </div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">
+                    {(() => {
+                      const avg = (data?.uniqueUsers || 0) > 0 ? Math.round((data?.totalRequests || 0) / (data?.uniqueUsers || 1)) : 0
+                      return isNaN(avg) ? 0 : avg
+                    })()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Bu ay</p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -167,8 +171,14 @@ export default function AnalyticsDashboard() {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{data.dailyData ? data.dailyData.length : 0}</div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <>
+                  <div className="text-2xl font-bold">{data?.dailyData ? data.dailyData.length : 0}</div>
+                  <p className="text-xs text-muted-foreground">Bu ay</p>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -194,54 +204,58 @@ export default function AnalyticsDashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="area" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="area">Alan Grafiği</TabsTrigger>
-                <TabsTrigger value="bar">Çubuk Grafiği</TabsTrigger>
-              </TabsList>
+            {isLoading ? (
+              <Skeleton className="h-[400px] w-full" />
+            ) : (
+              <Tabs defaultValue="area" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="area">Alan Grafiği</TabsTrigger>
+                  <TabsTrigger value="bar">Çubuk Grafiği</TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="area" className="mt-6">
-                <ResponsiveContainer width="100%" height={400}>
-                  <AreaChart data={getChartData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey={getTimeLabel()} />
-                    <YAxis />
-                    <Tooltip />
-                    <Area
-                      type="monotone"
-                      dataKey="users"
-                      stackId="1"
-                      stroke="#8884d8"
-                      fill="#8884d8"
-                      fillOpacity={0.6}
-                      name="Tekil Kullanıcı"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="requests"
-                      stackId="2"
-                      stroke="#82ca9d"
-                      fill="#82ca9d"
-                      fillOpacity={0.6}
-                      name="Toplam İstek"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </TabsContent>
+                <TabsContent value="area" className="mt-6">
+                  <ResponsiveContainer width="100%" height={400}>
+                    <AreaChart data={getChartData()}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey={getTimeLabel()} />
+                      <YAxis />
+                      <Tooltip />
+                      <Area
+                        type="monotone"
+                        dataKey="users"
+                        stackId="1"
+                        stroke="#8884d8"
+                        fill="#8884d8"
+                        fillOpacity={0.6}
+                        name="Tekil Kullanıcı"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="requests"
+                        stackId="2"
+                        stroke="#82ca9d"
+                        fill="#82ca9d"
+                        fillOpacity={0.6}
+                        name="Toplam İstek"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </TabsContent>
 
-              <TabsContent value="bar" className="mt-6">
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={getChartData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey={getTimeLabel()} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="users" fill="#8884d8" name="Tekil Kullanıcı" />
-                    <Bar dataKey="requests" fill="#82ca9d" name="Toplam İstek" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </TabsContent>
-            </Tabs>
+                <TabsContent value="bar" className="mt-6">
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={getChartData()}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey={getTimeLabel()} />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="users" fill="#8884d8" name="Tekil Kullanıcı" />
+                      <Bar dataKey="requests" fill="#82ca9d" name="Toplam İstek" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </TabsContent>
+              </Tabs>
+            )}
           </CardContent>
         </Card>
 
@@ -254,17 +268,23 @@ export default function AnalyticsDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(data.dailyData || []).slice(-7).map((day, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="font-medium">{day.date}</div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{isNaN(day.users) ? 0 : day.users} kullanıcı</span>
-                      <span>{isNaN(day.requests) ? 0 : day.requests} istek</span>
-                    </div>
-                  </div>
-                ))}
-                {(!data.dailyData || data.dailyData.length === 0) && (
-                  <div className="text-center text-muted-foreground py-4">Henüz veri bulunmuyor</div>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)
+                ) : (
+                  <>
+                    {(data?.dailyData || []).slice(-7).map((day, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div className="font-medium">{day.date}</div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>{isNaN(day.users) ? 0 : day.users} kullanıcı</span>
+                          <span>{isNaN(day.requests) ? 0 : day.requests} istek</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!data?.dailyData || data.dailyData.length === 0) && (
+                      <div className="text-center text-muted-foreground py-4">Henüz veri bulunmuyor</div>
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>
@@ -277,17 +297,23 @@ export default function AnalyticsDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(data.weeklyData || []).map((week, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="font-medium">{week.week || week.date}</div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{isNaN(week.users) ? 0 : week.users} kullanıcı</span>
-                      <span>{isNaN(week.requests) ? 0 : week.requests} istek</span>
-                    </div>
-                  </div>
-                ))}
-                {(!data.weeklyData || data.weeklyData.length === 0) && (
-                  <div className="text-center text-muted-foreground py-4">Henüz veri bulunmuyor</div>
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)
+                ) : (
+                  <>
+                    {(data?.weeklyData || []).map((week, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div className="font-medium">{week.week || week.date}</div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <span>{isNaN(week.users) ? 0 : week.users} kullanıcı</span>
+                          <span>{isNaN(week.requests) ? 0 : week.requests} istek</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!data?.weeklyData || data.weeklyData.length === 0) && (
+                      <div className="text-center text-muted-foreground py-4">Henüz veri bulunmuyor</div>
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>
