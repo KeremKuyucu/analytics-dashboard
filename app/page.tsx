@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -8,15 +8,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts"
 import { Activity, Users, Globe, Calendar, TrendingUp } from "lucide-react"
 
-import { useAnalytics } from "@/hooks/use-analytics"
-
-interface App {
-  id: string
-  name: string
-  color: string
+interface AnalyticsData {
+  uniqueUsers: number
+  totalRequests: number
+  dailyData: Array<{ date: string; users: number; requests: number }>
+  weeklyData: Array<{ week: string; users: number; requests: number }>
+  monthlyData: Array<{ month: string; users: number; requests: number }>
 }
 
-const apps: App[] = [
+const apps = [
   { id: "geogame", name: "GeoGame", color: "bg-blue-500" },
   { id: "pikamed", name: "PikaMed", color: "bg-green-500" },
   { id: "discordstorage", name: "DiscordStorage", color: "bg-purple-500" },
@@ -26,7 +26,32 @@ const apps: App[] = [
 export default function AnalyticsDashboard() {
   const [selectedApp, setSelectedApp] = useState("geogame")
   const [timeRange, setTimeRange] = useState("daily")
-  const { data } = useAnalytics(selectedApp, timeRange)
+  const [data, setData] = useState<AnalyticsData>({
+    uniqueUsers: 0,
+    totalRequests: 0,
+    dailyData: [],
+    weeklyData: [],
+    monthlyData: [],
+  })
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch(`/api/analytics?appId=${selectedApp}&timeRange=${timeRange}`)
+        const apiData = await response.json()
+
+        if (response.ok) {
+          setData(apiData)
+        } else {
+          console.error("API error:", apiData.error)
+        }
+      } catch (error) {
+        console.error("Fetch error:", error)
+      }
+    }
+
+    fetchData()
+  }, [selectedApp, timeRange])
 
   const getChartData = () => {
     switch (timeRange) {

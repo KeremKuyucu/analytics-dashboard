@@ -27,8 +27,8 @@ export async function OPTIONS(request: NextRequest) {
   const origin = request.headers.get('origin');
 
   // Yanıt başlıklarını kopyalayın
-  const headers: Record<string, string> = { ...corsHeaders };
-
+  const headers = { ...corsHeaders };
+  
   // Eğer origin izin verilenler listesindeyse, Access-Control-Allow-Origin başlığını ekleyin
   if (origin && allowedOrigins.includes(origin)) {
     headers['Access-Control-Allow-Origin'] = origin; // ✅ DOĞRU
@@ -59,36 +59,36 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
   const now = new Date();
   const currentMonth = now.getUTCMonth();
   const currentYear = now.getUTCFullYear();
-
+  
   // Son arşivleme tarihini kontrol et
   const lastArchiveDate = await getLastArchiveDate(analyticsData);
-
+  
   // Eğer bu ay zaten arşivleme kontrolü yapıldıysa, tekrar yapma
   if (lastArchiveDate) {
     const lastArchiveMonth = lastArchiveDate.getUTCMonth();
     const lastArchiveYear = lastArchiveDate.getUTCFullYear();
-
+    
     if (lastArchiveMonth === currentMonth && lastArchiveYear === currentYear) {
       return analyticsData;
     }
   }
-
+  
   // Önceki ayı hesapla
   const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
   const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
   const lastMonthKey = `${lastMonthYear}-${String(lastMonth + 1).padStart(2, "0")}`;
-
+  
   // Önceki aya ait verileri filtrele
   const monthlyData: any = {};
   let hasDataToArchive = false;
-
+  
   Object.keys(analyticsData).forEach(appId => {
     // Sistem verilerini atla
     if (appId === 'lastArchiveCheck') return;
-
+    
     const appData = analyticsData[appId];
     if (!appData.requests || !Array.isArray(appData.requests)) return;
-
+    
     // Önceki aya ait istekleri filtrele
     const monthlyRequests = appData.requests.filter((request: any) => {
       const requestDate = new Date(request.timestamp);
@@ -96,13 +96,13 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
       const requestYear = requestDate.getUTCFullYear();
       return requestMonth === lastMonth && requestYear === lastMonthYear;
     });
-
+    
     if (monthlyRequests.length > 0) {
       hasDataToArchive = true;
-
+      
       // Aylık benzersiz kullanıcıları hesapla
       const monthlyUniqueUsers = [...new Set(monthlyRequests.map((r: any) => r.userId))];
-
+      
       monthlyData[appId] = {
         month: lastMonthKey,
         uniqueUsers: monthlyUniqueUsers,
@@ -110,7 +110,7 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
         requests: monthlyRequests,
         archivedAt: new Date().toISOString()
       };
-
+      
       // Arşivlenen verileri ana veriden çıkar
       analyticsData[appId].requests = appData.requests.filter((request: any) => {
         const requestDate = new Date(request.timestamp);
@@ -118,39 +118,39 @@ async function checkAndArchiveMonthlyData(analyticsData: any) {
         const requestYear = requestDate.getUTCFullYear();
         return !(requestMonth === lastMonth && requestYear === lastMonthYear);
       });
-
+      
       // Benzersiz kullanıcıları güncelle (sadece kalan isteklere göre)
       const remainingUsers = [...new Set(analyticsData[appId].requests.map((r: any) => r.userId))];
       analyticsData[appId].uniqueUsers = remainingUsers;
       analyticsData[appId].totalRequests = analyticsData[appId].requests.length;
     }
   });
-
+  
   // Son arşivleme tarihini güncelle (veri olsun olmasın)
   analyticsData.lastArchiveCheck = new Date().toISOString();
-
+  
   // Eğer arşivlenecek veri varsa, arşiv kanalına gönder
   if (hasDataToArchive) {
     try {
       const archiveFileName = `analytics-archive-${lastMonthKey}.json`;
       const tempArchiveFilePath = path.join("/tmp", archiveFileName);
-
+      
       await writeJsonFile(tempArchiveFilePath, {
         archivedMonth: lastMonthKey,
         archivedAt: new Date().toISOString(),
         data: monthlyData
       });
-
+      
       // Arşiv kanalına yükle
       await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID);
       await deleteFile(tempArchiveFilePath);
-
+      
       console.log(`${lastMonthKey} ayı verileri arşivlendi`);
     } catch (error) {
       console.error("Arşivleme hatası:", error);
     }
   }
-
+  
   return analyticsData;
 }
 
@@ -191,11 +191,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await sendAnalyticsEmbedToDiscord(
-      "1388586990810959913",
-      appId,
-      userId,
-    );
+     await sendAnalyticsEmbedToDiscord(
+       "1388586990810959913",
+       appId,
+       userId,
+     );
 
     // Tekil kullanıcı kontrolü
     if (!analyticsData[appId].uniqueUsers.includes(userId)) {
@@ -245,11 +245,11 @@ export async function GET(request: NextRequest) {
     }
 
     const defaultResponse = {
-      uniqueUsers: 0,
-      totalRequests: 0,
-      dailyData: [],
-      weeklyData: [],
-      monthlyData: [],
+        uniqueUsers: 0,
+        totalRequests: 0,
+        dailyData: [],
+        weeklyData: [],
+        monthlyData: [],
     };
 
     if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
