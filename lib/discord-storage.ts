@@ -22,6 +22,32 @@ async function ensureDirectoryExists(dirPath: string): Promise<void> {
   }
 }
 
+// Discord bağlantısını test et
+export async function testDiscordConnection(): Promise<{ success: boolean; message?: string; channelName?: string }> {
+  if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+    return { success: false, message: "Environment variables missing" }
+  }
+
+  try {
+    const response = await axios.get(`https://discord.com/api/v10/channels/${process.env.DISCORD_CHANNEL_ID}`, {
+      headers: {
+        Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+      },
+    })
+
+    return {
+      success: true,
+      channelName: response.data.name,
+    }
+  } catch (error: any) {
+    console.error("Test connection error:", error.response?.data || error.message)
+    return {
+      success: false,
+      message: error.response?.data?.message || error.message,
+    }
+  }
+}
+
 // Discord'dan son mesajdaki dosyayı indiren fonksiyon
 export async function downloadFileFromDiscord(channelId: string): Promise<string | null> {
   if (!process.env.DISCORD_BOT_TOKEN) {
@@ -171,9 +197,9 @@ export async function initializeAnalyticsFile(): Promise<boolean> {
 }
 
 export async function sendAnalyticsEmbedToDiscord(
-  channelId,
-  appId,
-  userId
+  channelId: string,
+  appId: string,
+  userId: string
 ) {
   try {
     // Mesajın içeriğini oluşturalım
