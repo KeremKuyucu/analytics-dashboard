@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { sendAnalyticsEmbedToDiscord } from "@/lib/discord-storage" // Sadece bildirim için bunu tuttuk
 
 // Supabase İstemcisi
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -54,18 +53,6 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("Supabase Insert Error:", error)
       return NextResponse.json({ error: "Veritabanı hatası" }, { status: 500, headers: corsHeaders })
-    }
-
-    // 2. (Opsiyonel) Discord'a bildirim gönder
-    // Dosya yükleme kalktı ama embed bildirimi kalabilir.
-    try {
-      await sendAnalyticsEmbedToDiscord(
-        "1388586990810959913", // Kanal ID
-        appId,
-        userId,
-      );
-    } catch (discordError) {
-      console.error("Discord bildirim hatası (kritik değil):", discordError)
     }
 
     return NextResponse.json({
