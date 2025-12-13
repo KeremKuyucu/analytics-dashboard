@@ -34,20 +34,19 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { appId, userId, endpoint } = body
+    const { appId, userId, endpoint, timestamp, isMigration } = body
 
     if (!appId || !userId) {
       return NextResponse.json({ error: "appId ve userId gerekli" }, { status: 400, headers: corsHeaders })
     }
 
-    // 1. Veriyi Supabase'e ekle
     const { error } = await supabase
       .from('analytics_events')
       .insert({
         app_id: appId,
         user_id: userId,
         endpoint: endpoint || null,
-        // created_at otomatik eklenir
+        created_at: timestamp || new Date().toISOString()
       })
 
     if (error) {
@@ -57,15 +56,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Analitik verisi Supabase'e kaydedildi",
+      message: "Kaydedildi",
     }, { headers: corsHeaders })
 
   } catch (error) {
-    console.error("Analytics POST error:", error)
     return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders })
   }
 }
-
 // GET: Verileri çek ve raporla
 export async function GET(request: NextRequest) {
   try {
