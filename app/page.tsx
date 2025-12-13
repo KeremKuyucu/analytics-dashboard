@@ -8,13 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts"
 import { Activity, Users, Globe, Calendar, TrendingUp } from "lucide-react"
 
-// Interface'i esnekleştirdik: week ve date optional olabilir
+// Yeni API yapısına uygun interface
+// API artık her zaman 'date' anahtarı dönüyor (haftalık olsa bile haftanın başlangıç tarihi 'date' içinde gelir)
 interface AnalyticsData {
   uniqueUsers: number
   totalRequests: number
   dailyData: Array<{ date: string; users: number; requests: number }>
-  weeklyData: Array<{ week?: string; date?: string; users: number; requests: number }>
-  monthlyData: Array<{ month: string; users: number; requests: number }>
+  weeklyData: Array<{ date: string; users: number; requests: number }>
+  monthlyData: Array<{ date: string; users: number; requests: number }>
 }
 
 const apps = [
@@ -43,7 +44,6 @@ export default function AnalyticsDashboard() {
         const apiData = await response.json()
 
         if (response.ok) {
-          // Gelen veriyi güvenli bir şekilde state'e atıyoruz
           setData({
             uniqueUsers: apiData.uniqueUsers || 0,
             totalRequests: apiData.totalRequests || 0,
@@ -62,31 +62,40 @@ export default function AnalyticsDashboard() {
     fetchData()
   }, [selectedApp, timeRange])
 
-  // Grafikler için X ekseni anahtarını belirle
-  const getTimeLabel = () => {
-    switch (timeRange) {
-      case "weekly":
-        return "label" // Aşağıda normalize edeceğimiz için genel bir isim kullanıyoruz
-      case "monthly":
-        return "month"
-      default:
-        return "date"
+  // Tarihleri daha okunabilir yapmak için yardımcı fonksiyon (Örn: "2025-12-14" -> "14 Ara")
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "-"
+    try {
+      const date = new Date(dateStr)
+      return new Intl.DateTimeFormat('tr-TR', {
+        day: 'numeric',
+        month: 'short',
+        // Eğer monthly seçiliyse yılı da gösterelim
+        year: timeRange === 'monthly' ? '2-digit' : undefined
+      }).format(date)
+    } catch (e) {
+      return dateStr
     }
   }
 
-  // Grafik verisini normalize et (week veya date gelse de çalışsın)
+  // Grafik verisini hazırla ve tarihleri formatla
   const getChartData = () => {
+    let sourceData = []
     switch (timeRange) {
       case "weekly":
-        return (data.weeklyData || []).map(item => ({
-          ...item,
-          label: item.week || item.date || "Bilinmiyor" // week yoksa date kullan
-        }))
+        sourceData = data.weeklyData || []
+        break
       case "monthly":
-        return data.monthlyData || []
+        sourceData = data.monthlyData || []
+        break
       default:
-        return data.dailyData || []
+        sourceData = data.dailyData || []
     }
+
+    return sourceData.map(item => ({
+      ...item,
+      displayDate: formatDate(item.date) // Grafik ekseni için formatlanmış tarih
+    }))
   }
 
   const selectedAppData = apps.find((app) => app.id === selectedApp)
@@ -218,9 +227,10 @@ export default function AnalyticsDashboard() {
                 <ResponsiveContainer width="100%" height={400}>
                   <AreaChart data={getChartData()}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey={getTimeLabel()} />
+                    {/* displayDate kullanarak formatlı tarihi gösteriyoruz */}
+                    <XAxis dataKey="displayDate" />
                     <YAxis />
-                    <Tooltip />
+                    <Tooltip labelStyle={{ color: 'black' }} />
                     <Area
                       type="monotone"
                       dataKey="users"
@@ -247,9 +257,9 @@ export default function AnalyticsDashboard() {
                 <ResponsiveContainer width="100%" height={400}>
                   <BarChart data={getChartData()}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey={getTimeLabel()} />
+                    <XAxis dataKey="displayDate" />
                     <YAxis />
-                    <Tooltip />
+                    <Tooltip labelStyle={{ color: 'black' }} />
                     <Bar dataKey="users" fill="#8884d8" name="Tekil Kullanıcı" />
                     <Bar dataKey="requests" fill="#82ca9d" name="Toplam İstek" />
                   </BarChart>
@@ -272,7 +282,7 @@ export default function AnalyticsDashboard() {
                 {(data.dailyData || []).length > 0 ? (
                   (data.dailyData || []).slice(-7).map((day, index) => (
                     <div key={index} className="flex items-center justify-between">
-                      <div className="font-medium">{day.date}</div>
+                      <div className="font-medium">{formatDate(day.date)}</div>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span>{isNaN(day.users) ? 0 : day.users} kullanıcı</span>
                         <span>{isNaN(day.requests) ? 0 : day.requests} istek</span>
@@ -281,7 +291,9 @@ export default function AnalyticsDashboard() {
                   ))
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
-                    Günlük veri bulunamadı.
+                    {timeRange !== 'daily'
+                      ? "Günlük verileri görmek için yukarıdan 'Günlük' seçin."
+                      : "Veri bulunamadı."}
                   </div>
                 )}
               </div>
@@ -299,8 +311,7 @@ export default function AnalyticsDashboard() {
                 {(data.weeklyData || []).length > 0 ? (
                   data.weeklyData.map((week, index) => (
                     <div key={index} className="flex items-center justify-between">
-                      {/* Haftalık veride week yoksa date'e bak, yoksa tire koy */}
-                      <div className="font-medium">{week.week || week.date || "-"}</div>
+                      <div className="font-medium">{formatDate(week.date)} haftası</div>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span>{isNaN(week.users) ? 0 : week.users} kullanıcı</span>
                         <span>{isNaN(week.requests) ? 0 : week.requests} istek</span>
@@ -310,7 +321,7 @@ export default function AnalyticsDashboard() {
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
                     {timeRange !== 'weekly'
-                      ? "Verileri görmek için yukarıdan 'Haftalık' seçin."
+                      ? "Haftalık verileri görmek için yukarıdan 'Haftalık' seçin."
                       : "Henüz veri bulunmuyor."}
                   </div>
                 )}
