@@ -69,8 +69,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const appId = searchParams.get("appId")
     const timeRange = searchParams.get("timeRange") || "daily"
-    // Yeni parametre: Başlangıç Tarihi
     const startDate = searchParams.get("startDate")
+    const endDate = searchParams.get("endDate")
 
     if (!appId) {
       return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400, headers: corsHeaders })
@@ -84,19 +84,27 @@ export async function GET(request: NextRequest) {
       monthlyData: [],
     };
 
-    // Sorguyu dinamik olarak oluşturuyoruz
     let query = supabase
       .from('analytics_events')
       .select('user_id, created_at')
       .eq('app_id', appId)
       .order('created_at', { ascending: true })
 
-    // Eğer başlangıç tarihi varsa filtrele
+    // Başlangıç Tarihi Filtresi
     if (startDate && startDate !== 'all') {
-      // startDate'in başından (00:00) başlatmak için
-      const dateFilter = new Date(startDate)
-      if (!isNaN(dateFilter.getTime())) {
-        query = query.gte('created_at', dateFilter.toISOString())
+      const startFilter = new Date(startDate)
+      if (!isNaN(startFilter.getTime())) {
+        query = query.gte('created_at', startFilter.toISOString())
+      }
+    }
+
+    // Bitiş Tarihi Filtresi (Yeni Eklendi)
+    if (endDate && endDate !== 'all') {
+      const endFilter = new Date(endDate)
+      if (!isNaN(endFilter.getTime())) {
+        // Seçilen günün sonuna kadar (23:59:59) olan verileri al
+        endFilter.setHours(23, 59, 59, 999)
+        query = query.lte('created_at', endFilter.toISOString())
       }
     }
 
@@ -107,7 +115,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(defaultResponse, { headers: corsHeaders });
     }
 
-    // 2. Verileri işle
     const formattedRequests = requests.map(r => ({
       userId: r.user_id,
       timestamp: r.created_at
@@ -117,7 +124,6 @@ export async function GET(request: NextRequest) {
     const uniqueUsersSet = new Set(formattedRequests.map(r => r.userId))
     const uniqueUsers = uniqueUsersSet.size
 
-    // 3. Zaman aralığına göre grupla
     const groupedData = groupDataByTimeRange(formattedRequests, timeRange)
 
     return NextResponse.json({
@@ -134,9 +140,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * Yardımcı Fonksiyon: Verileri zamana göre gruplar
- */
 function groupDataByTimeRange(requests: any[], timeRange: string) {
   const grouped: Record<string, { users: Set<string>; requests: number }> = {}
 
