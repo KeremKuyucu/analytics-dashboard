@@ -8,11 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts"
 import { Activity, Users, Globe, Calendar, TrendingUp } from "lucide-react"
 
+// Interface'i esnekleştirdik: week ve date optional olabilir
 interface AnalyticsData {
   uniqueUsers: number
   totalRequests: number
   dailyData: Array<{ date: string; users: number; requests: number }>
-  weeklyData: Array<{ week: string; users: number; requests: number }>
+  weeklyData: Array<{ week?: string; date?: string; users: number; requests: number }>
   monthlyData: Array<{ month: string; users: number; requests: number }>
 }
 
@@ -26,6 +27,7 @@ const apps = [
 export default function AnalyticsDashboard() {
   const [selectedApp, setSelectedApp] = useState("geogame")
   const [timeRange, setTimeRange] = useState("daily")
+
   const [data, setData] = useState<AnalyticsData>({
     uniqueUsers: 0,
     totalRequests: 0,
@@ -41,7 +43,14 @@ export default function AnalyticsDashboard() {
         const apiData = await response.json()
 
         if (response.ok) {
-          setData(apiData)
+          // Gelen veriyi güvenli bir şekilde state'e atıyoruz
+          setData({
+            uniqueUsers: apiData.uniqueUsers || 0,
+            totalRequests: apiData.totalRequests || 0,
+            dailyData: apiData.dailyData || [],
+            weeklyData: apiData.weeklyData || [],
+            monthlyData: apiData.monthlyData || []
+          })
         } else {
           console.error("API error:", apiData.error)
         }
@@ -53,25 +62,30 @@ export default function AnalyticsDashboard() {
     fetchData()
   }, [selectedApp, timeRange])
 
-  const getChartData = () => {
-    switch (timeRange) {
-      case "weekly":
-        return data.weeklyData || []
-      case "monthly":
-        return data.monthlyData || []
-      default:
-        return data.dailyData || []
-    }
-  }
-
+  // Grafikler için X ekseni anahtarını belirle
   const getTimeLabel = () => {
     switch (timeRange) {
       case "weekly":
-        return "week"
+        return "label" // Aşağıda normalize edeceğimiz için genel bir isim kullanıyoruz
       case "monthly":
         return "month"
       default:
         return "date"
+    }
+  }
+
+  // Grafik verisini normalize et (week veya date gelse de çalışsın)
+  const getChartData = () => {
+    switch (timeRange) {
+      case "weekly":
+        return (data.weeklyData || []).map(item => ({
+          ...item,
+          label: item.week || item.date || "Bilinmiyor" // week yoksa date kullan
+        }))
+      case "monthly":
+        return data.monthlyData || []
+      default:
+        return data.dailyData || []
     }
   }
 
@@ -128,7 +142,7 @@ export default function AnalyticsDashboard() {
               <div className="text-2xl font-bold">
                 {isNaN(data.uniqueUsers) ? 0 : data.uniqueUsers.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              <p className="text-xs text-muted-foreground">Seçili dönem</p>
             </CardContent>
           </Card>
 
@@ -141,7 +155,7 @@ export default function AnalyticsDashboard() {
               <div className="text-2xl font-bold">
                 {isNaN(data.totalRequests) ? 0 : data.totalRequests.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              <p className="text-xs text-muted-foreground">Seçili dönem</p>
             </CardContent>
           </Card>
 
@@ -157,18 +171,18 @@ export default function AnalyticsDashboard() {
                   return isNaN(avg) ? 0 : avg
                 })()}
               </div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              <p className="text-xs text-muted-foreground">Seçili dönem</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Aktif Günler</CardTitle>
+              <CardTitle className="text-sm font-medium">Veri Noktası Sayısı</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{data.dailyData ? data.dailyData.length : 0}</div>
-              <p className="text-xs text-muted-foreground">Bu ay</p>
+              <div className="text-2xl font-bold">{getChartData().length}</div>
+              <p className="text-xs text-muted-foreground">Seçili dönem</p>
             </CardContent>
           </Card>
         </div>
@@ -247,6 +261,7 @@ export default function AnalyticsDashboard() {
 
         {/* Detaylı İstatistikler */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Sol Kart: Son 7 Gün */}
           <Card>
             <CardHeader>
               <CardTitle>Son 7 Gün</CardTitle>
@@ -254,22 +269,26 @@ export default function AnalyticsDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(data.dailyData || []).slice(-7).map((day, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="font-medium">{day.date}</div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{isNaN(day.users) ? 0 : day.users} kullanıcı</span>
-                      <span>{isNaN(day.requests) ? 0 : day.requests} istek</span>
+                {(data.dailyData || []).length > 0 ? (
+                  (data.dailyData || []).slice(-7).map((day, index) => (
+                    <div key={index} className="flex items-center justify-between">
+                      <div className="font-medium">{day.date}</div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span>{isNaN(day.users) ? 0 : day.users} kullanıcı</span>
+                        <span>{isNaN(day.requests) ? 0 : day.requests} istek</span>
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center text-muted-foreground py-4">
+                    Günlük veri bulunamadı.
                   </div>
-                ))}
-                {(!data.dailyData || data.dailyData.length === 0) && (
-                  <div className="text-center text-muted-foreground py-4">Henüz veri bulunmuyor</div>
                 )}
               </div>
             </CardContent>
           </Card>
 
+          {/* Sağ Kart: Haftalık Özet */}
           <Card>
             <CardHeader>
               <CardTitle>Haftalık Özet</CardTitle>
@@ -277,17 +296,23 @@ export default function AnalyticsDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(data.weeklyData || []).map((week, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="font-medium">{week.week || week.date}</div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{isNaN(week.users) ? 0 : week.users} kullanıcı</span>
-                      <span>{isNaN(week.requests) ? 0 : week.requests} istek</span>
+                {(data.weeklyData || []).length > 0 ? (
+                  data.weeklyData.map((week, index) => (
+                    <div key={index} className="flex items-center justify-between">
+                      {/* Haftalık veride week yoksa date'e bak, yoksa tire koy */}
+                      <div className="font-medium">{week.week || week.date || "-"}</div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span>{isNaN(week.users) ? 0 : week.users} kullanıcı</span>
+                        <span>{isNaN(week.requests) ? 0 : week.requests} istek</span>
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center text-muted-foreground py-4">
+                    {timeRange !== 'weekly'
+                      ? "Verileri görmek için yukarıdan 'Haftalık' seçin."
+                      : "Henüz veri bulunmuyor."}
                   </div>
-                ))}
-                {(!data.weeklyData || data.weeklyData.length === 0) && (
-                  <div className="text-center text-muted-foreground py-4">Henüz veri bulunmuyor</div>
                 )}
               </div>
             </CardContent>
