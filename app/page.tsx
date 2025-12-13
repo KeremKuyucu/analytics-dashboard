@@ -5,11 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button" // Button importu eklendi
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts"
-import { Activity, Users, Globe, Calendar, TrendingUp } from "lucide-react"
+import { Activity, Users, Globe, Calendar, TrendingUp, X, CalendarDays } from "lucide-react"
 
-// Yeni API yapısına uygun interface
-// API artık her zaman 'date' anahtarı dönüyor (haftalık olsa bile haftanın başlangıç tarihi 'date' içinde gelir)
 interface AnalyticsData {
   uniqueUsers: number
   totalRequests: number
@@ -28,6 +27,8 @@ const apps = [
 export default function AnalyticsDashboard() {
   const [selectedApp, setSelectedApp] = useState("geogame")
   const [timeRange, setTimeRange] = useState("daily")
+  // Yeni state: Başlangıç Tarihi (boş string = tüm zamanlar)
+  const [startDate, setStartDate] = useState("")
 
   const [data, setData] = useState<AnalyticsData>({
     uniqueUsers: 0,
@@ -40,7 +41,9 @@ export default function AnalyticsDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch(`/api/analytics?appId=${selectedApp}&timeRange=${timeRange}`)
+        // startDate varsa URL'e ekle, yoksa 'all' gönder (veya boş bırak)
+        const dateParam = startDate ? `&startDate=${startDate}` : ''
+        const response = await fetch(`/api/analytics?appId=${selectedApp}&timeRange=${timeRange}${dateParam}`)
         const apiData = await response.json()
 
         if (response.ok) {
@@ -60,9 +63,8 @@ export default function AnalyticsDashboard() {
     }
 
     fetchData()
-  }, [selectedApp, timeRange])
+  }, [selectedApp, timeRange, startDate]) // startDate değişince de tetiklenir
 
-  // Tarihleri daha okunabilir yapmak için yardımcı fonksiyon (Örn: "2025-12-14" -> "14 Ara")
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "-"
     try {
@@ -70,7 +72,6 @@ export default function AnalyticsDashboard() {
       return new Intl.DateTimeFormat('tr-TR', {
         day: 'numeric',
         month: 'short',
-        // Eğer monthly seçiliyse yılı da gösterelim
         year: timeRange === 'monthly' ? '2-digit' : undefined
       }).format(date)
     } catch (e) {
@@ -78,7 +79,6 @@ export default function AnalyticsDashboard() {
     }
   }
 
-  // Grafik verisini hazırla ve tarihleri formatla
   const getChartData = () => {
     let sourceData = []
     switch (timeRange) {
@@ -94,7 +94,7 @@ export default function AnalyticsDashboard() {
 
     return sourceData.map(item => ({
       ...item,
-      displayDate: formatDate(item.date) // Grafik ekseni için formatlanmış tarih
+      displayDate: formatDate(item.date)
     }))
   }
 
@@ -104,14 +104,38 @@ export default function AnalyticsDashboard() {
     <div className="min-h-screen bg-background">
       <div className="border-b">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold">Uygulama Analitikleri</h1>
               <p className="text-muted-foreground">Uygulamalarınızın kullanım istatistiklerini takip edin</p>
             </div>
-            <div className="flex items-center gap-4">
+
+            {/* Üst Kontrol Alanı: Uygulama Seçimi ve Tarih Filtresi */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+
+              {/* Tarih Filtresi Alanı */}
+              <div className="flex items-center gap-2 border rounded-md px-3 py-2 bg-background w-full sm:w-auto">
+                <CalendarDays className="w-4 h-4 text-muted-foreground" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent text-sm focus:outline-none w-full sm:w-32"
+                  placeholder="Başlangıç Tarihi"
+                />
+                {startDate && (
+                  <button
+                    onClick={() => setStartDate("")}
+                    className="hover:bg-slate-100 p-1 rounded-full transition-colors"
+                    title="Filtreyi Temizle"
+                  >
+                    <X className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                )}
+              </div>
+
               <Select value={selectedApp} onValueChange={setSelectedApp}>
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-full sm:w-48">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -134,10 +158,18 @@ export default function AnalyticsDashboard() {
         <div className="flex items-center gap-4 mb-8">
           <div className={`w-4 h-4 rounded-full ${selectedAppData?.color}`} />
           <h2 className="text-xl font-semibold">{selectedAppData?.name}</h2>
-          <Badge variant="secondary" className="ml-auto">
-            <Activity className="w-3 h-3 mr-1" />
-            Aktif
-          </Badge>
+          <div className="ml-auto flex items-center gap-2">
+            {/* Seçili tarih varsa badge göster */}
+            {startDate && (
+              <Badge variant="outline" className="hidden sm:flex">
+                {new Date(startDate).toLocaleDateString('tr-TR')} tarihinden itibaren
+              </Badge>
+            )}
+            <Badge variant="secondary">
+              <Activity className="w-3 h-3 mr-1" />
+              Aktif
+            </Badge>
+          </div>
         </div>
 
         {/* Ana İstatistikler */}
@@ -151,7 +183,7 @@ export default function AnalyticsDashboard() {
               <div className="text-2xl font-bold">
                 {isNaN(data.uniqueUsers) ? 0 : data.uniqueUsers.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">Seçili dönem</p>
+              <p className="text-xs text-muted-foreground">{startDate ? 'Seçili tarih aralığı' : 'Tüm zamanlar'}</p>
             </CardContent>
           </Card>
 
@@ -164,7 +196,7 @@ export default function AnalyticsDashboard() {
               <div className="text-2xl font-bold">
                 {isNaN(data.totalRequests) ? 0 : data.totalRequests.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">Seçili dönem</p>
+              <p className="text-xs text-muted-foreground">{startDate ? 'Seçili tarih aralığı' : 'Tüm zamanlar'}</p>
             </CardContent>
           </Card>
 
@@ -180,7 +212,7 @@ export default function AnalyticsDashboard() {
                   return isNaN(avg) ? 0 : avg
                 })()}
               </div>
-              <p className="text-xs text-muted-foreground">Seçili dönem</p>
+              <p className="text-xs text-muted-foreground">{startDate ? 'Seçili tarih aralığı' : 'Tüm zamanlar'}</p>
             </CardContent>
           </Card>
 
@@ -191,7 +223,7 @@ export default function AnalyticsDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{getChartData().length}</div>
-              <p className="text-xs text-muted-foreground">Seçili dönem</p>
+              <p className="text-xs text-muted-foreground">{timeRange === 'daily' ? 'Gün' : timeRange === 'weekly' ? 'Hafta' : 'Ay'}</p>
             </CardContent>
           </Card>
         </div>
@@ -199,10 +231,14 @@ export default function AnalyticsDashboard() {
         {/* Grafikler */}
         <Card className="mb-8">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <CardTitle>Kullanım Trendleri</CardTitle>
-                <CardDescription>Tekil kullanıcı ve toplam istek sayıları</CardDescription>
+                <CardDescription>
+                  {startDate
+                    ? `${new Date(startDate).toLocaleDateString('tr-TR')} tarihinden itibaren veriler`
+                    : "Tüm zamanların kullanım verileri"}
+                </CardDescription>
               </div>
               <Select value={timeRange} onValueChange={setTimeRange}>
                 <SelectTrigger className="w-32">
@@ -227,7 +263,6 @@ export default function AnalyticsDashboard() {
                 <ResponsiveContainer width="100%" height={400}>
                   <AreaChart data={getChartData()}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    {/* displayDate kullanarak formatlı tarihi gösteriyoruz */}
                     <XAxis dataKey="displayDate" />
                     <YAxis />
                     <Tooltip labelStyle={{ color: 'black' }} />
@@ -269,18 +304,19 @@ export default function AnalyticsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Detaylı İstatistikler */}
+        {/* Detaylı İstatistikler (Listeler) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Sol Kart: Son 7 Gün */}
+          {/* Sol Kart: Son 7 Gün (Filtreli durumda 'Son Kayıtlar' olarak davranır) */}
           <Card>
             <CardHeader>
-              <CardTitle>Son 7 Gün</CardTitle>
+              <CardTitle>{startDate ? 'Filtreli Günlük Veriler' : 'Son 7 Gün'}</CardTitle>
               <CardDescription>Günlük kullanım detayları</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {(data.dailyData || []).length > 0 ? (
-                  (data.dailyData || []).slice(-7).map((day, index) => (
+                  // Filtre varsa hepsini göster (scroll olabilir), yoksa son 7
+                  (startDate ? (data.dailyData || []) : (data.dailyData || []).slice(-7)).map((day, index) => (
                     <div key={index} className="flex items-center justify-between">
                       <div className="font-medium">{formatDate(day.date)}</div>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -304,7 +340,7 @@ export default function AnalyticsDashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Haftalık Özet</CardTitle>
-              <CardDescription>Bu ayki haftalık performans</CardDescription>
+              <CardDescription>Haftalık performans</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">

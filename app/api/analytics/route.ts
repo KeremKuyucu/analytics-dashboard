@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 
 // Supabase İstemcisi
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY! // Admin yetkisi için Service Role Key kullanın
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
 const allowedOrigins = [
@@ -46,7 +46,6 @@ export async function POST(request: NextRequest) {
         app_id: appId,
         user_id: userId,
         endpoint: endpoint || null,
-        created_at: timestamp || new Date().toISOString()
       })
 
     if (error) {
@@ -63,18 +62,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders })
   }
 }
+
 // GET: Verileri çek ve raporla
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const appId = searchParams.get("appId")
     const timeRange = searchParams.get("timeRange") || "daily"
+    // Yeni parametre: Başlangıç Tarihi
+    const startDate = searchParams.get("startDate")
 
     if (!appId) {
       return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400, headers: corsHeaders })
     }
 
-    // Frontend yapısını bozmamak için boş veri şablonu
     const defaultResponse = {
       uniqueUsers: 0,
       totalRequests: 0,
@@ -83,14 +84,23 @@ export async function GET(request: NextRequest) {
       monthlyData: [],
     };
 
-    // 1. İlgili AppID'ye ait verileri çek
-    // Not: Çok büyük verilerde buraya tarih filtresi (.gte) eklemek performans için iyi olur.
-    // Şimdilik tüm geçmişi çekiyoruz ki eski mantıkla aynı çalışsın.
-    const { data: requests, error } = await supabase
+    // Sorguyu dinamik olarak oluşturuyoruz
+    let query = supabase
       .from('analytics_events')
       .select('user_id, created_at')
       .eq('app_id', appId)
       .order('created_at', { ascending: true })
+
+    // Eğer başlangıç tarihi varsa filtrele
+    if (startDate && startDate !== 'all') {
+      // startDate'in başından (00:00) başlatmak için
+      const dateFilter = new Date(startDate)
+      if (!isNaN(dateFilter.getTime())) {
+        query = query.gte('created_at', dateFilter.toISOString())
+      }
+    }
+
+    const { data: requests, error } = await query
 
     if (error || !requests) {
       console.error("Supabase Select Error:", error)
@@ -98,18 +108,16 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Verileri işle
-    // Veritabanından gelen sütun isimleri snake_case olabilir, onları JS formatına çeviriyoruz.
     const formattedRequests = requests.map(r => ({
       userId: r.user_id,
       timestamp: r.created_at
     }))
 
     const totalRequests = formattedRequests.length
-    // Tekil kullanıcı sayısı
     const uniqueUsersSet = new Set(formattedRequests.map(r => r.userId))
     const uniqueUsers = uniqueUsersSet.size
 
-    // 3. Zaman aralığına göre grupla (Eski yardımcı fonksiyonu kullanıyoruz)
+    // 3. Zaman aralığına göre grupla
     const groupedData = groupDataByTimeRange(formattedRequests, timeRange)
 
     return NextResponse.json({
@@ -128,7 +136,6 @@ export async function GET(request: NextRequest) {
 
 /**
  * Yardımcı Fonksiyon: Verileri zamana göre gruplar
- * Bu fonksiyon frontend'in beklediği veri formatını üretir.
  */
 function groupDataByTimeRange(requests: any[], timeRange: string) {
   const grouped: Record<string, { users: Set<string>; requests: number }> = {}
@@ -139,9 +146,8 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
 
     switch (timeRange) {
       case "weekly":
-        // Pazartesi'yi hafta başı olarak al (ISO 8601 standardı)
         const weekStart = new Date(date)
-        const dayOfWeek = date.getUTCDay() // 0=Pazar, 1=Pazartesi
+        const dayOfWeek = date.getUTCDay()
         const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1
         weekStart.setUTCDate(date.getUTCDate() - daysToSubtract)
         weekStart.setUTCHours(0, 0, 0, 0)
@@ -165,7 +171,7 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
   return Object.entries(grouped)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => ({
-      date: key, // Frontend'de 'date', 'week' veya 'month' olarak kullanılıyor olabilir, burası 'date' key'i ile dönüyor.
+      date: key,
       users: value.users.size,
       requests: value.requests,
     }))
