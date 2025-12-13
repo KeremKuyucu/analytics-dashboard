@@ -1,159 +1,37 @@
 import { type NextRequest, NextResponse } from "next/server"
-import {
-  downloadFileFromDiscord,
-  uploadFileToDiscord,
-  readJsonFile,
-  writeJsonFile,
-  deleteFile,
-  sendAnalyticsEmbedToDiscord
-} from "@/lib/discord-storage"
-import path from "path"
+import { createClient } from "@supabase/supabase-js"
+import { sendAnalyticsEmbedToDiscord } from "@/lib/discord-storage" // Sadece bildirim için bunu tuttuk
 
-const ARCHIVE_CHANNEL_ID = "1384527208336588820";
+// Supabase İstemcisi
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY! // Admin yetkisi için Service Role Key kullanın
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 const allowedOrigins = [
   'https://geogame-api.keremkk.com.tr',
   'https://kisalink.icu'
 ];
 
-// Temel CORS başlıkları
 const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 export async function OPTIONS(request: NextRequest) {
-  // Gelen isteğin Origin başlığını alın
   const origin = request.headers.get('origin');
-
-  // Yanıt başlıklarını kopyalayın
   const headers = { ...corsHeaders };
-  
-  // Eğer origin izin verilenler listesindeyse, Access-Control-Allow-Origin başlığını ekleyin
+
   if (origin && allowedOrigins.includes(origin)) {
-    headers['Access-Control-Allow-Origin'] = origin; // ✅ DOĞRU
+    headers['Access-Control-Allow-Origin'] = origin;
   }
 
   return new NextResponse(null, {
-    status: 204, // No Content
+    status: 204,
     headers: headers,
   });
 }
 
-/**
- * Son arşivleme tarihini kontrol eder
- */
-async function getLastArchiveDate(analyticsData: any): Promise<Date | null> {
-  if (analyticsData.lastArchiveCheck) {
-    return new Date(analyticsData.lastArchiveCheck);
-  }
-  return null;
-}
-
-/**
- * Aylık verileri kontrol eder ve gerekiyorsa arşivler.
- * @param {Object} analyticsData - Analitik verileri.
- * @returns {Object} Güncellenmiş analitik verileri.
- */
-async function checkAndArchiveMonthlyData(analyticsData: any) {
-  const now = new Date();
-  const currentMonth = now.getUTCMonth();
-  const currentYear = now.getUTCFullYear();
-  
-  // Son arşivleme tarihini kontrol et
-  const lastArchiveDate = await getLastArchiveDate(analyticsData);
-  
-  // Eğer bu ay zaten arşivleme kontrolü yapıldıysa, tekrar yapma
-  if (lastArchiveDate) {
-    const lastArchiveMonth = lastArchiveDate.getUTCMonth();
-    const lastArchiveYear = lastArchiveDate.getUTCFullYear();
-    
-    if (lastArchiveMonth === currentMonth && lastArchiveYear === currentYear) {
-      return analyticsData;
-    }
-  }
-  
-  // Önceki ayı hesapla
-  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-  const lastMonthKey = `${lastMonthYear}-${String(lastMonth + 1).padStart(2, "0")}`;
-  
-  // Önceki aya ait verileri filtrele
-  const monthlyData: any = {};
-  let hasDataToArchive = false;
-  
-  Object.keys(analyticsData).forEach(appId => {
-    // Sistem verilerini atla
-    if (appId === 'lastArchiveCheck') return;
-    
-    const appData = analyticsData[appId];
-    if (!appData.requests || !Array.isArray(appData.requests)) return;
-    
-    // Önceki aya ait istekleri filtrele
-    const monthlyRequests = appData.requests.filter((request: any) => {
-      const requestDate = new Date(request.timestamp);
-      const requestMonth = requestDate.getUTCMonth();
-      const requestYear = requestDate.getUTCFullYear();
-      return requestMonth === lastMonth && requestYear === lastMonthYear;
-    });
-    
-    if (monthlyRequests.length > 0) {
-      hasDataToArchive = true;
-      
-      // Aylık benzersiz kullanıcıları hesapla
-      const monthlyUniqueUsers = [...new Set(monthlyRequests.map((r: any) => r.userId))];
-      
-      monthlyData[appId] = {
-        month: lastMonthKey,
-        uniqueUsers: monthlyUniqueUsers,
-        totalRequests: monthlyRequests.length,
-        requests: monthlyRequests,
-        archivedAt: new Date().toISOString()
-      };
-      
-      // Arşivlenen verileri ana veriden çıkar
-      analyticsData[appId].requests = appData.requests.filter((request: any) => {
-        const requestDate = new Date(request.timestamp);
-        const requestMonth = requestDate.getUTCMonth();
-        const requestYear = requestDate.getUTCFullYear();
-        return !(requestMonth === lastMonth && requestYear === lastMonthYear);
-      });
-      
-      // Benzersiz kullanıcıları güncelle (sadece kalan isteklere göre)
-      const remainingUsers = [...new Set(analyticsData[appId].requests.map((r: any) => r.userId))];
-      analyticsData[appId].uniqueUsers = remainingUsers;
-      analyticsData[appId].totalRequests = analyticsData[appId].requests.length;
-    }
-  });
-  
-  // Son arşivleme tarihini güncelle (veri olsun olmasın)
-  analyticsData.lastArchiveCheck = new Date().toISOString();
-  
-  // Eğer arşivlenecek veri varsa, arşiv kanalına gönder
-  if (hasDataToArchive) {
-    try {
-      const archiveFileName = `analytics-archive-${lastMonthKey}.json`;
-      const tempArchiveFilePath = path.join("/tmp", archiveFileName);
-      
-      await writeJsonFile(tempArchiveFilePath, {
-        archivedMonth: lastMonthKey,
-        archivedAt: new Date().toISOString(),
-        data: monthlyData
-      });
-      
-      // Arşiv kanalına yükle
-      await uploadFileToDiscord(tempArchiveFilePath, ARCHIVE_CHANNEL_ID);
-      await deleteFile(tempArchiveFilePath);
-      
-      console.log(`${lastMonthKey} ayı verileri arşivlendi`);
-    } catch (error) {
-      console.error("Arşivleme hatası:", error);
-    }
-  }
-  
-  return analyticsData;
-}
-
+// POST: Yeni veri ekle
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -163,77 +41,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "appId ve userId gerekli" }, { status: 400, headers: corsHeaders })
     }
 
-    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
-      return NextResponse.json({ error: "Discord yapılandırması eksik" }, { status: 500, headers: corsHeaders })
+    // 1. Veriyi Supabase'e ekle
+    const { error } = await supabase
+      .from('analytics_events')
+      .insert({
+        app_id: appId,
+        user_id: userId,
+        endpoint: endpoint || null,
+        // created_at otomatik eklenir
+      })
+
+    if (error) {
+      console.error("Supabase Insert Error:", error)
+      return NextResponse.json({ error: "Veritabanı hatası" }, { status: 500, headers: corsHeaders })
     }
 
-    // Discord'dan mevcut veriyi indir
-    const downloadedFilePath = await downloadFileFromDiscord(process.env.DISCORD_CHANNEL_ID)
-
-    let analyticsData: any = {}
-
-    if (downloadedFilePath) {
-      // İndirilen dosyayı oku
-      analyticsData = await readJsonFile(downloadedFilePath)
-      // Geçici dosyayı sil
-      await deleteFile(downloadedFilePath)
-    }
-
-    // Aylık arşivleme kontrolü yap
-    analyticsData = await checkAndArchiveMonthlyData(analyticsData);
-
-    // Uygulama verisi yoksa oluştur
-    if (!analyticsData[appId]) {
-      analyticsData[appId] = {
-        uniqueUsers: [],
-        totalRequests: 0,
-        requests: [],
-      }
-    }
-
-     await sendAnalyticsEmbedToDiscord(
-       "1388586990810959913",
-       appId,
-       userId,
-     );
-
-    // Tekil kullanıcı kontrolü
-    if (!analyticsData[appId].uniqueUsers.includes(userId)) {
-      analyticsData[appId].uniqueUsers.push(userId)
-    }
-
-    analyticsData[appId].requests.push({
-      userId,
-      //endpoint: endpoint || 'unknown',
-      timestamp: new Date().toISOString(),
-    });
-
-    analyticsData[appId].totalRequests++
-
-    // Güncellenmiş veriyi geçici dosyaya yaz
-    const tempFilePath = path.join("/tmp", `analytics-${Date.now()}.json`)
-    await writeJsonFile(tempFilePath, analyticsData)
-
-    // Discord'a yükle
-    const uploadSuccess = await uploadFileToDiscord(tempFilePath, process.env.DISCORD_CHANNEL_ID)
-
-    // Geçici dosyayı sil
-    await deleteFile(tempFilePath)
-
-    if (!uploadSuccess) {
-      return NextResponse.json({ error: "Discord'a yükleme başarısız" }, { status: 500, headers: corsHeaders })
+    // 2. (Opsiyonel) Discord'a bildirim gönder
+    // Dosya yükleme kalktı ama embed bildirimi kalabilir.
+    try {
+      await sendAnalyticsEmbedToDiscord(
+        "1388586990810959913", // Kanal ID
+        appId,
+        userId,
+      );
+    } catch (discordError) {
+      console.error("Discord bildirim hatası (kritik değil):", discordError)
     }
 
     return NextResponse.json({
       success: true,
-      message: "Analitik verisi Discord'a kaydedildi",
+      message: "Analitik verisi Supabase'e kaydedildi",
     }, { headers: corsHeaders })
+
   } catch (error) {
     console.error("Analytics POST error:", error)
     return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders })
   }
 }
 
+// GET: Verileri çek ve raporla
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -244,41 +90,43 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "appId parametresi gerekli" }, { status: 400, headers: corsHeaders })
     }
 
+    // Frontend yapısını bozmamak için boş veri şablonu
     const defaultResponse = {
-        uniqueUsers: 0,
-        totalRequests: 0,
-        dailyData: [],
-        weeklyData: [],
-        monthlyData: [],
+      uniqueUsers: 0,
+      totalRequests: 0,
+      dailyData: [],
+      weeklyData: [],
+      monthlyData: [],
     };
 
-    if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+    // 1. İlgili AppID'ye ait verileri çek
+    // Not: Çok büyük verilerde buraya tarih filtresi (.gte) eklemek performans için iyi olur.
+    // Şimdilik tüm geçmişi çekiyoruz ki eski mantıkla aynı çalışsın.
+    const { data: requests, error } = await supabase
+      .from('analytics_events')
+      .select('user_id, created_at')
+      .eq('app_id', appId)
+      .order('created_at', { ascending: true })
+
+    if (error || !requests) {
+      console.error("Supabase Select Error:", error)
       return NextResponse.json(defaultResponse, { headers: corsHeaders });
     }
 
-    // Discord'dan veriyi indir
-    const downloadedFilePath = await downloadFileFromDiscord(process.env.DISCORD_CHANNEL_ID)
+    // 2. Verileri işle
+    // Veritabanından gelen sütun isimleri snake_case olabilir, onları JS formatına çeviriyoruz.
+    const formattedRequests = requests.map(r => ({
+      userId: r.user_id,
+      timestamp: r.created_at
+    }))
 
-    if (!downloadedFilePath) {
-      return NextResponse.json(defaultResponse, { headers: corsHeaders });
-    }
+    const totalRequests = formattedRequests.length
+    // Tekil kullanıcı sayısı
+    const uniqueUsersSet = new Set(formattedRequests.map(r => r.userId))
+    const uniqueUsers = uniqueUsersSet.size
 
-    const analyticsData = await readJsonFile(downloadedFilePath)
-    await deleteFile(downloadedFilePath)
-
-    if (!analyticsData[appId]) {
-      return NextResponse.json(defaultResponse, { headers: corsHeaders });
-    }
-
-    const appData = analyticsData[appId]
-
-    // Güvenli veri kontrolü
-    const uniqueUsers = Array.isArray(appData.uniqueUsers) ? appData.uniqueUsers.length : 0
-    const totalRequests = typeof appData.totalRequests === "number" ? appData.totalRequests : 0
-    const requests = Array.isArray(appData.requests) ? appData.requests : []
-
-    // Zaman aralığına göre grupla
-    const groupedData = groupDataByTimeRange(requests, timeRange)
+    // 3. Zaman aralığına göre grupla (Eski yardımcı fonksiyonu kullanıyoruz)
+    const groupedData = groupDataByTimeRange(formattedRequests, timeRange)
 
     return NextResponse.json({
       uniqueUsers,
@@ -287,18 +135,17 @@ export async function GET(request: NextRequest) {
       weeklyData: timeRange === "weekly" ? groupedData : [],
       monthlyData: timeRange === "monthly" ? groupedData : [],
     }, { headers: corsHeaders })
+
   } catch (error) {
     console.error("Analytics GET error:", error)
-    return NextResponse.json({
-      uniqueUsers: 0,
-      totalRequests: 0,
-      dailyData: [],
-      weeklyData: [],
-      monthlyData: [],
-    }, { headers: corsHeaders })
+    return NextResponse.json({ error: "Sunucu hatası" }, { status: 500, headers: corsHeaders })
   }
 }
 
+/**
+ * Yardımcı Fonksiyon: Verileri zamana göre gruplar
+ * Bu fonksiyon frontend'in beklediği veri formatını üretir.
+ */
 function groupDataByTimeRange(requests: any[], timeRange: string) {
   const grouped: Record<string, { users: Set<string>; requests: number }> = {}
 
@@ -311,7 +158,7 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
         // Pazartesi'yi hafta başı olarak al (ISO 8601 standardı)
         const weekStart = new Date(date)
         const dayOfWeek = date.getUTCDay() // 0=Pazar, 1=Pazartesi
-        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // Pazartesi'ye kadar geri git
+        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1
         weekStart.setUTCDate(date.getUTCDate() - daysToSubtract)
         weekStart.setUTCHours(0, 0, 0, 0)
         key = weekStart.toISOString().split("T")[0]
@@ -319,7 +166,7 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
       case "monthly":
         key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
         break
-      default:
+      default: // daily
         key = date.toISOString().split("T")[0]
     }
 
@@ -334,7 +181,7 @@ function groupDataByTimeRange(requests: any[], timeRange: string) {
   return Object.entries(grouped)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => ({
-      date: key,
+      date: key, // Frontend'de 'date', 'week' veya 'month' olarak kullanılıyor olabilir, burası 'date' key'i ile dönüyor.
       users: value.users.size,
       requests: value.requests,
     }))
