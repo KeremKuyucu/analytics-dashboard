@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     let endDate = searchParams.get("endDate")
 
     const now = new Date();
-    // Bitiş tarihi ayarı
+    // Bitiş tarihi yoksa bugüne ayarla
     if (!endDate || endDate === 'all') {
       endDate = now.toISOString();
     } else {
@@ -119,17 +119,12 @@ export async function GET(request: NextRequest) {
       endDate = e.toISOString();
     }
 
-    // Başlangıç tarihi ayarı (DÜZELTİLEN KISIM)
-    if (startDate === 'all') {
-      // 'all' seçilirse 1970'e (en başa) git
-      startDate = new Date(0).toISOString();
-    } else if (!startDate) {
-      // Hiçbir şey seçilmezse son 30 gün
-      const s = new Date();
-      s.setDate(s.getDate() - 30);
-      startDate = s.toISOString();
+    // --- DÜZELTME BURADA ---
+    // Eğer tarih seçilmezse (!startDate) veya 'all' seçilirse
+    // Artık 30 gün kısıtlaması YOK. 1970'ten (en baştan) itibaren alır.
+    if (!startDate || startDate === 'all') {
+      startDate = new Date(0).toISOString(); // 1970-01-01
     } else {
-      // Belirli bir tarih varsa onu kullan
       startDate = new Date(startDate).toISOString();
     }
 
@@ -158,3 +153,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Server Error" }, { status: 500, headers })
   }
 }
+
