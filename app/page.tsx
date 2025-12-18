@@ -21,7 +21,6 @@ const apps = [
   { id: "pikamed", name: "PikaMed", color: "bg-green-500" },
   { id: "discordstorage", name: "DiscordStorage", color: "bg-purple-500" },
   { id: "kisalink", name: "kısaLink", color: "bg-red-500" },
-  // Yeni eklenen:
   { id: "keremkk", name: "KeremKK", color: "bg-orange-500" }, 
 ]
 
