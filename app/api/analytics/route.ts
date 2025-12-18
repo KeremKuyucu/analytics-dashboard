@@ -5,12 +5,15 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-const MOBILE_API_KEY = process.env.MOBILE_APP_KEY
+const MOBILE_API_KEY = process.env.MOBILE_APP_KEY || "change-me"
 const ENABLE_MOBILE_AUTH = false
 
 const allowedOrigins = [
+  'https://analytics.keremkk.com.tr',
   'https://geogame-api.keremkk.com.tr',
-  'https://kisalink.icu'
+  'https://kisalink.icu',
+  'https://keremkk.com.tr',
+  'https://pikamed-api.keremkk.com.tr'
 ];
 
 function getCorsHeaders(origin: string | null) {
@@ -83,13 +86,21 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
   const headers = getCorsHeaders(origin);
+  
+  let isAllowed = false;
 
-  if (!origin || !allowedOrigins.includes(origin)) {
-    return NextResponse.json(
-      { error: "Forbidden" }, 
-      { status: 403, headers }
-    );
+  if (origin && allowedOrigins.includes(origin)) {
+    isAllowed = true;
+  } else if (!origin && referer) {
+    if (allowedOrigins.some(allowed => referer.startsWith(allowed))) {
+      isAllowed = true;
+    }
+  }
+
+  if (!isAllowed) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403, headers });
   }
 
   try {
