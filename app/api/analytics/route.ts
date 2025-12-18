@@ -11,9 +11,7 @@ const ENABLE_MOBILE_AUTH = false
 const allowedOrigins = [
   'https://analytics.keremkk.com.tr',
   'https://geogame-api.keremkk.com.tr',
-  'https://kisalink.icu',
-  'https://keremkk.com.tr',
-  'https://pikamed-api.keremkk.com.tr'
+  'https://kisalink.icu'
 ];
 
 function getCorsHeaders(origin: string | null) {
@@ -112,6 +110,7 @@ export async function GET(request: NextRequest) {
     let endDate = searchParams.get("endDate")
 
     const now = new Date();
+    // Bitiş tarihi ayarı
     if (!endDate || endDate === 'all') {
       endDate = now.toISOString();
     } else {
@@ -120,12 +119,18 @@ export async function GET(request: NextRequest) {
       endDate = e.toISOString();
     }
 
-    if (!startDate || startDate === 'all') {
+    // Başlangıç tarihi ayarı (DÜZELTİLEN KISIM)
+    if (startDate === 'all') {
+      // 'all' seçilirse 1970'e (en başa) git
+      startDate = new Date(0).toISOString();
+    } else if (!startDate) {
+      // Hiçbir şey seçilmezse son 30 gün
       const s = new Date();
       s.setDate(s.getDate() - 30);
       startDate = s.toISOString();
     } else {
-        startDate = new Date(startDate).toISOString();
+      // Belirli bir tarih varsa onu kullan
+      startDate = new Date(startDate).toISOString();
     }
 
     if (!appId) {
