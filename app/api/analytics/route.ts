@@ -5,9 +5,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-const MOBILE_API_KEY = process.env.MOBILE_APP_KEY || "change-me"
-const ENABLE_MOBILE_AUTH = false
-
 const allowedOrigins = [
   'https://analytics.keremkk.com.tr',
   'https://geogame-api.keremkk.com.tr',
@@ -25,7 +22,7 @@ function getCorsHeaders(origin: string | null) {
   if (origin && allowedOrigins.includes(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
   }
-  
+
   return headers;
 }
 
@@ -44,13 +41,6 @@ export async function POST(request: NextRequest) {
 
   if (origin && allowedOrigins.includes(origin)) {
     isAuthorized = true;
-  } else {
-    if (ENABLE_MOBILE_AUTH) {
-      const apiKey = request.headers.get('x-api-key');
-      if (apiKey === MOBILE_API_KEY) isAuthorized = true;
-    } else {
-      isAuthorized = true; 
-    }
   }
 
   if (!isAuthorized) {
@@ -88,7 +78,7 @@ export async function GET(request: NextRequest) {
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
   const headers = getCorsHeaders(origin);
-  
+
   let isAllowed = false;
 
   if (origin && allowedOrigins.includes(origin)) {
@@ -107,12 +97,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const appId = searchParams.get("appId")
     const timeRange = searchParams.get("timeRange") || "daily"
-    
+
     let startDate = searchParams.get("startDate")
     let endDate = searchParams.get("endDate")
 
     const now = new Date();
-    // Bitiş tarihi yoksa bugüne ayarla
     if (!endDate || endDate === 'all') {
       endDate = now.toISOString();
     } else {
@@ -121,11 +110,8 @@ export async function GET(request: NextRequest) {
       endDate = e.toISOString();
     }
 
-    // --- DÜZELTME BURADA ---
-    // Eğer tarih seçilmezse (!startDate) veya 'all' seçilirse
-    // Artık 30 gün kısıtlaması YOK. 1970'ten (en baştan) itibaren alır.
     if (!startDate || startDate === 'all') {
-      startDate = new Date(0).toISOString(); // 1970-01-01
+      startDate = new Date(0).toISOString();
     } else {
       startDate = new Date(startDate).toISOString();
     }
