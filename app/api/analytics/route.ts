@@ -11,7 +11,9 @@ const ENABLE_MOBILE_AUTH = false
 const allowedOrigins = [
   'https://analytics.keremkk.com.tr',
   'https://geogame-api.keremkk.com.tr',
-  'https://kisalink.icu'
+  'https://kisalink.icu',
+  'https://keremkk.com.tr',
+  'https://pikamed-api.keremkk.com.tr'
 ];
 
 function getCorsHeaders(origin: string | null) {
